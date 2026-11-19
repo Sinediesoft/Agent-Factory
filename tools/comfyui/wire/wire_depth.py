@@ -1,4 +1,4 @@
-"""ComfyUI node for the calibrated WIRE-01 and EDM-01 reference cameras (metres, glTF Y-up)."""
+"""ComfyUI enclosure reconstruction from calibrated machine views (metres, glTF Y-up)."""
 from pathlib import Path
 import numpy as np
 import onnxruntime as ort
@@ -76,6 +76,8 @@ def surface_from_views(images, masks, session, machine):
         chamber = (abs(gx) < 1.12) & (gy > .66) & (gy < 2.62) & (gz > -.78)
         ram_bore = (abs(gx) < .26) & (abs(gz-.70) < .26) & (gy > 2.48)
         chamber |= ram_bore
+    elif machine == 'grind':
+        chamber = (abs(gx) < 1.16) & (gy > .72) & (gy < 2.73) & (gz > -.72)
     else:
         chamber = (gx > -1.59) & (gx < .91) & (gy > .58) & (gy < 2.74) & (gz > -.69)
     envelope = (abs(gx) <= 1.96) & (abs(gz) <= 1.59) & (gy >= .19) & (gy <= 3.15)
@@ -120,4 +122,9 @@ class EdmDepthShell(WireDepthShell):
     machine = 'edm'
 
 
-NODE_CLASS_MAPPINGS = {'WireDepthShell': WireDepthShell, 'EdmDepthShell': EdmDepthShell}
+class GrindDepthShell(WireDepthShell):
+    machine = 'grind'
+
+
+NODE_CLASS_MAPPINGS = {'WireDepthShell': WireDepthShell, 'EdmDepthShell': EdmDepthShell,
+                       'GrindDepthShell': GrindDepthShell}

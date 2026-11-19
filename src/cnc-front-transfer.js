@@ -2,7 +2,8 @@
 export const frontStation = 'CNC-L01';
 export const gripOffset = {forward: 1.155, height: -.165};
 export const fixtureHeight = 1.205;
-const fixtures = {CNC:{height:fixtureHeight, depth:.87}, WIRE:{height:1.35, depth:.67}, EDM:{height:1.455, depth:.70}};
+const fixtures = {CNC:{height:fixtureHeight, depth:.87}, GRIND:{height:1.35, depth:.78},
+  WIRE:{height:1.35, depth:.67}, EDM:{height:1.455, depth:.70}};
 export const frontFixture = station => fixtures[station?.type];
 const homeReach = 1.78, homeHeight = 1.70;
 const lerp = (a,b,f) => a + (b-a)*f;

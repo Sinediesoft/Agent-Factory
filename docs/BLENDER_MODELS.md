@@ -9,7 +9,7 @@
 | [`agent-factory-scene.blend`](../agent-factory-scene.blend) | 可編輯的七設備、雙臂與完整九環軌道場景 |
 | [`public/models/cnc.glb`](../public/models/cnc.glb) | CNC 的主軸、工作台、治具與備援外觀 |
 | [`public/models/cnc-l01-shell.glb`](../public/models/cnc-l01-shell.glb) | 四台 CNC 共用的 Onshape 外殼、單滑門與三色燈柱 |
-| [`public/models/grind.glb`](../public/models/grind.glb) | 平面磨床示範外觀 |
+| [`public/models/grind.glb`](../public/models/grind.glb) | ComfyUI 研磨機外殼、左開滑門、磁力工作台、水平主軸砂輪與弧形護罩 |
 | [`public/models/wire.glb`](../public/models/wire.glb) | ComfyUI 固定外殼、升降槽門、電極線與上下線導頭 |
 | [`public/models/edm.glb`](../public/models/edm.glb) | ComfyUI 雙柱式外殼、升降槽門、滑枕與成形銅電極 |
 | [`public/models/robot.glb`](../public/models/robot.glb) | R1 / R2 共用的軌道載台與關節手臂 |
@@ -26,7 +26,9 @@
 
 網頁用 `GLTFLoader` 載入 GLB，並沿用原本的模擬事件。CNC 外殼提供 `SlidingDoor`、`StackRed`、`StackOrange`、`StackGreen`。WIRE-01 與 EDM-01 都使用 `TankGate` 和資產的 `stroke` 行程驅動升降槽門。WIRE-01 移動線導頭，EDM-01 則沿垂直軸移動滑枕及銅電極。[WIRE-01 生成與驗證](../tools/comfyui/wire/README.md) · [EDM-01 生成與驗證](../tools/comfyui/edm/README.md)
 
-研磨機台提供 `Door_L`、`Door_R`、`StatusRed`、`StatusYellow`、`StatusGreen` 節點。手臂模型提供 `Shoulder`、`Elbow`、`Wrist`、`ToolRough`、`ToolProtect` 節點。軌道模型提供 `Rotor_CNC` 等六個轉盤節點與 14 個 `Dock_*` 停靠端點，轉盤角度跟隨預約時段回放。模型載入失敗時保留簡化備援模型，畫面會顯示載入失敗訊息。
+GRIND-01 使用 `SlidingDoor` 與資產的 `stroke` 水平開門。水平主軸帶動砂輪旋轉，研磨頭在工件上方往復掃過五道。研磨機面板參考 FANUC CNC 研磨應用，機身尺寸依示範場景設計。[FANUC 研磨應用](https://www.fanuc.eu/eu-en/application/cnc-grinding) · [GRIND-01 生成與驗證](../tools/comfyui/grind/README.md)
+
+手臂模型提供 `Shoulder`、`Elbow`、`Wrist`、`ToolRough`、`ToolProtect` 節點。軌道模型提供 `Rotor_CNC` 等六個轉盤節點與 14 個 `Dock_*` 停靠端點，轉盤角度跟隨預約時段回放。模型載入失敗時保留簡化備援模型，畫面會顯示載入失敗訊息。
 
 每台機台的三段燈柱由回放狀態控制：紅色表示異常，橘色表示加工運行中，綠色表示程式執行完畢、等待收料；閒置時燈光熄滅。`machine_faulted` 和 `machine_recovered` 事件可驅動紅燈，異常狀態會維持到解除事件。固定六件正常示範不產生異常事件；目前燈號只呈現狀態，不包含故障停機與重新排程。
 
