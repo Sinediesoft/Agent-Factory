@@ -281,6 +281,13 @@ function makeFallbackLamp(x,z){
 }
 function updateMachineLamp(lamps,status){
   const active=machineLampState(status);
+  if(lamps.beacon){
+    const lens=lamps.beacon.material;
+    lens.color.setHex(active ? lampColors[active] : 0xa52424);
+    lens.emissive.setHex(active ? lampColors[active] : 0x000000);
+    lens.emissiveIntensity=active ? .75 : 0;
+    return;
+  }
   for(const [name,mesh] of Object.entries(lamps)){
     if(!mesh)continue;
     const lit=name===active;
@@ -323,18 +330,46 @@ const shellStationId = 'CNC-L01';
 async function installCadShell(group) {
   const {scene: shell} = await loadModel('/models/cnc-l01-shell.glb');
   shell.name = 'CadShell';
-  const paint = new THREE.MeshStandardMaterial({color: 0xbac7ca, roughness: .48, metalness: .22, flatShading: true});
   shell.traverse(part => {
     if (!part.isMesh) return;
-    part.material = paint;
-    part.castShadow = part.receiveShadow = true;
+    part.castShadow = !part.material.transparent;
+    part.receiveShadow = true;
+    part.material.shadowSide = THREE.BackSide;
+    if (part.material.transparent) part.material.depthWrite = false;
   });
-  const panels = ['rear-enclosure', 'roof', 'left-side', 'right-side', 'front-header',
-    'front-sill', 'interior-black', ...Array.from({length: 5}, (_, i) => `side-vent-${i}`)];
-  for (const name of panels) group.getObjectByName(name)?.removeFromParent();
+  if (shell.getObjectByName('CNC-L01-enclosure')) {
+    // Earlier exports contain only the fixed enclosure. Keep the Blender doors and controls.
+    const fixed = /^(rear-enclosure|roof|left-side|right-side|front-header|front-sill|interior-black|side-vent-\d+)$/;
+    for (const part of [...group.getObjectByName('MachineRoot').children]) {
+      if (fixed.test(part.name)) part.removeFromParent();
+    }
+  } else {
+    installRobodrillExterior(group, shell);
+  }
   group.add(shell);
   applyMonitorCutaway();
   $('cnc-shell-demo').disabled = false;
+}
+
+function installRobodrillExterior(group, shell) {
+  const door = shell.getObjectByName('SlidingDoor');
+  const doorPanel = shell.getObjectByName('DoorPanel');
+  const beacon = shell.getObjectByName('BeaconLens');
+  if (!door || !doorPanel || !beacon?.isMesh) throw new Error('Incomplete CNC exterior');
+  // The STEP shares red paint between the beacon, lettering and emergency stop.
+  beacon.material = beacon.material.clone();
+  const machine = machineMeshes[shellStationId];
+  const panelSize = new THREE.Box3().setFromObject(doorPanel).getSize(new THREE.Vector3());
+  machine.slidingDoor = door;
+  machine.doorStroke = panelSize.x - .120;
+  machine.lamps = {beacon};
+  machine.lampPick.position.copy(new THREE.Box3().setFromObject(beacon).getCenter(new THREE.Vector3()));
+  const original = group.getObjectByName('MachineRoot');
+  for (const part of [...original.children]) {
+    if (!/^(cross-slide|table-t-slot|work-fixture|spindle-housing|spindle-chuck|cutting-tool)/.test(part.name)) {
+      part.removeFromParent();
+    }
+  }
 }
 
 $('cnc-shell-demo').addEventListener('click', () => {
@@ -347,12 +382,12 @@ $('cnc-shell-demo').addEventListener('click', () => {
   document.querySelector('[data-focus="all"]').click();
   shellTrialView = true;
   applyMonitorCutaway();
-  controls.target.set(station.x + .5, 1.5, station.z + .5).multiplyScalar(modelScale);
-  camera.position.copy(controls.target).add(new THREE.Vector3(-3.0, 1.9, 6.4).multiplyScalar(modelScale));
+  controls.target.set(station.x + .1, 1.6, station.z + .45).multiplyScalar(modelScale);
+  camera.position.copy(controls.target).add(new THREE.Vector3(2.7, 2.2, 6.6).multiplyScalar(modelScale));
   controls.update();
   setFocusButton($('cnc-shell-demo'));
   document.querySelector('.scene-overlay span:first-child').textContent =
-    shellStationId + ' · CAD 外殼 · ' + loading.piece;
+    [shellStationId, machineMeshes[shellStationId].slidingDoor ? 'ROBODRILL' : 'CAD 外殼', loading.piece].join(' · ');
   playback.seek(loading.start);
   playback.rate = 30;
   $('speed-select').value = '30';
@@ -527,7 +562,9 @@ function updateScene(state){
   }
   for(const [id,m] of Object.entries(state.machines)){
     const obj=machineMeshes[id];
-    if(obj.doorL){obj.doorL.position.x=THREE.MathUtils.lerp(obj.doorL.position.x,obj.closedL+(m.doorOpen?-.55:0),.15);
+    if(obj.slidingDoor){
+      obj.slidingDoor.position.x=THREE.MathUtils.lerp(obj.slidingDoor.position.x,m.doorOpen ? -obj.doorStroke : 0,.15);
+    }else if(obj.doorL){obj.doorL.position.x=THREE.MathUtils.lerp(obj.doorL.position.x,obj.closedL+(m.doorOpen?-.55:0),.15);
       obj.doorR.position.x=THREE.MathUtils.lerp(obj.doorR.position.x,obj.closedR+(m.doorOpen ? .55 : 0),.15);}
     else obj.door.position.y=m.doorOpen?1.8:.95;
     updateMachineLamp(obj.lamps,m.status);

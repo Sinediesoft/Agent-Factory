@@ -1,20 +1,21 @@
-# CNC-L01 外殼
+# CNC-L01 外觀與上下料回放
 
-這個試驗只替換 CNC-L01 的固定外殼。滑門、主軸、治具、機械手臂和工件沿用場景內可動的零件。開啟 `/app.html`，選「CNC-L01 上下料試播」，畫面會從 R2 準備上料播到取回 P01。加工時可點機台燈號切入機內視角。[查看實際回放畫面](../../docs/visuals/cnc-l01-cad-cycle.jpg)
+CNC-L01 的外觀參照 FANUC ROBODRILL α-D21MiB5 Plus 標準型。黃色單滑門向左收入前鈑金，門片與右側護罩都有斜紋觀察窗。右前方有操作面板、鍵盤和急停鈕，機身下方為內收的白色裙板及深色腳座。模型尺寸依本專案 R2 的上料位置設定。[FANUC 官方參考照片](https://www.fanuc.co.jp/ja/product/robodrill/image/d21mib5_plus_large.jpg)
 
-## Onshape 建模與場景資產
+## Onshape 與場景資產
 
-- 在公開的 [Onshape Part Studio](https://cad.onshape.com/documents/d2dc54c108fe51406cda3992/w/0f7392f108fa0290ce4bb896/e/9d1c7e48cb93d76b37177ac6) 中，「CNC-L01 enclosure 1」建立一個外殼實體。編輯此特徵可調整外寬、深度、門洞寬度與壁厚。[Onshape Feature Studio](https://cad.onshape.com/documents/d2dc54c108fe51406cda3992/w/0f7392f108fa0290ce4bb896/e/77a3ae67a704f00a4bcc9aab) 和[本機原始碼](cnc-l01-shell.fs) 保存同一份 FeatureScript。
-- [STEP 實體](../../cad/cnc-l01-shell.step) 從上述零件匯出，格式為 AP242。建置程式將這份 STEP 轉成 [Three.js 使用的 GLB](../../public/models/cnc-l01-shell.glb)。
-- 外殼預設寬 3,840、深 3,220、高 2,740 mm，底面在地面上方 320 mm。正面門洞寬 2,500、高 1,580 mm。CAD 使用毫米、Z 軸向上、從負 Y 方向上料。場景使用公尺、Y 軸向上、從正 Z 方向上料。尺寸依合成示範機台設定。
+[公開 Part Studio](https://cad.onshape.com/documents/d2dc54c108fe51406cda3992/w/0f7392f108fa0290ce4bb896/e/9d1c7e48cb93d76b37177ac6) 的「CNC-L01 enclosure 1」產生 29 個實體。預設櫃體寬 2,920 mm、深 2,660 mm，含頂燈高 3,440 mm。正面開口寬 1,110 mm，門片向左滑動 1,004 mm。可在特徵內調整櫃寬、深度、開口及壁厚。[Feature Studio](https://cad.onshape.com/documents/d2dc54c108fe51406cda3992/w/0f7392f108fa0290ce4bb896/e/77a3ae67a704f00a4bcc9aab) · [本機 FeatureScript](cnc-l01-shell.fs)
 
-## 從 STEP 更新場景
+[出自 Onshape 的 STEP](../../cad/cnc-l01-shell.step) 保留零件名稱與顏色。請從整個 Part Studio 匯出單一 AP242 檔案，保留 Z 軸向上。建置程式會將毫米轉成公尺，改以 Y 軸向上，並將滑門、玻璃、把手組成一個可動件。[場景 GLB](../../public/models/cnc-l01-shell.glb)
 
-在安裝 CadQuery 2.8.0 的 Python 環境下執行。第一個指令從專案內的 Onshape STEP 重建 GLB。第二個指令可用另一份 STEP 試算，更新同一個 GLB。若要正式更新場景，請將新的 Onshape 匯出檔存為 `cad/cnc-l01-shell.step` 再執行第一個指令。
+在安裝 CadQuery 2.8.0 的 Python 環境執行下列指令，可從專案的 STEP 重建場景資產。也可傳入 `--step /path/to/exterior.step` 以測試新的匯出檔。
 
 ```sh
 python tools/onshape/build_shell.py
-python tools/onshape/build_shell.py --step /path/to/onshape-enclosure.step
 ```
 
-`npm test` 會檢查預設 GLB 的安裝座標、單位和門洞邊界。場景預設尺寸變更時需一起更新測試。機械手臂依排程事件播放，上下料的全行程干涉及關節可達性尚待驗證。
+## 驗證
+
+建置時以門片、玻璃和把手整段直線行程的外包盒，逐一檢查與固定外觀零件的干涉。`npm test` 會檢查模型尺寸、座標、透視窗和開關門時的上料通道。機械手臂沿用示範排程與關節動畫，全行程的手臂可達性及碰撞尚待實機尺寸驗證。
+
+在 `/app.html` 點「CNC-L01 上下料試播」，可看到 R2 開門上料、關門加工、完工亮綠燈，以及下料後將 P01 送往研磨站。試播會停在 CNC 下料完成；繼續播放可查看後續移轉。點機台狀態燈可切換機內視角。[查看回放截圖](../../docs/visuals/cnc-l01-cad-cycle.jpg)
