@@ -1,4 +1,4 @@
-"""Build the default STEP for the local trial, or tessellate a STEP from Onshape.
+"""Tessellate the CNC enclosure STEP exported from Onshape for the scene.
 
 Run with CadQuery 2.8.0. All CAD coordinates are in millimetres, Z up.
 """
@@ -16,22 +16,6 @@ def box(xmin, ymin, zmin, xmax, ymax, zmax):
     return cq.Solid.makeBox(
         xmax - xmin, ymax - ymin, zmax - zmin, cq.Vector(xmin, ymin, zmin)
     )
-
-
-def default_enclosure():
-    """Local equivalent of the FeatureScript's default configuration."""
-    half_width, half_depth, wall = 1920, 1610, 80
-    bottom, top, half_port = 320, 3060, 1250
-    x, y = half_width, half_depth
-    stock = box(-x, -y, bottom, x, y, top)
-    cavity = box(-x + wall, -y + wall, bottom + wall, x - wall, y - wall, top - wall)
-    port = box(-half_port, -y - 1, 730, half_port, -y + wall + 1, 2310)
-    reveal = box(-half_port, -y - 1, 2470, half_port, -y + 16, 2510)
-    vents = [
-        box(-x - 1, -150, z, -x + wall + 1, 900, z + 42)
-        for z in range(1900, 2281, 95)
-    ]
-    return stock.cut(cavity, port, reveal, *vents).clean()
 
 
 def make_runtime_mesh(step):
@@ -55,8 +39,6 @@ def make_runtime_mesh(step):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--step", type=Path, help="Use an exported enclosure STEP in its mounting coordinates")
+    parser.add_argument("--step", type=Path, default=DEFAULT_STEP, help="Use an exported enclosure STEP in its mounting coordinates")
     args = parser.parse_args()
-    if args.step is None:
-        cq.exporters.export(default_enclosure(), str(DEFAULT_STEP))
-    make_runtime_mesh(args.step or DEFAULT_STEP)
+    make_runtime_mesh(args.step)

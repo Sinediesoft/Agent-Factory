@@ -20,7 +20,7 @@ npm run build  # 產生 dist/app.html 與 dist/index.html
 
 `npm run preview` 可檢查靜態建置成果。`/api/interpret` 是開發伺服器上的本機 API；純靜態預覽沒有 LLM 後端。
 
-此分支的 CNC-L01 已接入可匯入 Onshape 的 CAD 外殼。「CNC-L01 上下料試播」可回放首件工件從上料到完工取件的流程。[模型與重建方式](tools/onshape/README.md)
+此分支的 CNC-L01 已接入從 Onshape 原生零件匯出的 CAD 外殼。「CNC-L01 上下料試播」可回放首件工件從上料到完工取件的流程。[模型與重建方式](tools/onshape/README.md)
 
 ## 已實作
 
