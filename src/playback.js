@@ -2,6 +2,8 @@ import { DEMO, pointFor } from './config.js';
 
 import { frontFixture, frontTransferPose, railSample } from './cnc-front-transfer.js';
 
+import {exchangePose, storeTransferPose} from './robot-motion.js';
+
 export function stateAt(sim, tick) {
   const config = sim.config || DEMO;
   const quantity = sim.options.quantity ?? config.recipe.quantity;
@@ -11,7 +13,7 @@ export function stateAt(sim, tick) {
   }));
   const machines = Object.fromEntries(Object.keys(config.stations).map(id => [id, { status: 'idle', faulted: false, piece: null, doorOpen: false }]));
   const arms = Object.fromEntries(['R1', 'R2'].map(id => [id, { id, location: config.armStart[id], tool: null,
-    position: pointFor(config.armStart[id], config), task: null, status: 'idle' }]));
+    position: pointFor(config.armStart[id], config), mountedTool:null, railYaw:sim.parkYaw?.[id] ?? 0, task: null, status: 'idle' }]));
   const stock = { RAW: quantity, WIP: 0, FG: 0 };
   const recent = [];
   for (const event of sim.events) {
@@ -53,24 +55,35 @@ export function stateAt(sim, tick) {
       const fraction = Math.min(1,(tick-span.start)/(span.end-span.start));
       if (span.path) {
         const sample = railSample(span.path,fraction);
-        arm.position = sample.point;
-        arm.frontStationId = span.frontTo ?? (tick < span.end ? span.frontFrom : null);
-        // Back out with the same chassis orientation the previous route parked in.
-        const [first, next] = span.path;
-        const startYaw = -Math.atan2(next[1]-first[1], next[0]-first[0]);
-        const reverse = span.frontFrom && Math.cos(startYaw - (arm.frontRailYaw ?? Math.PI/2)) < 0;
-        arm.frontRailYaw = arm.frontStationId ? sample.yaw + (reverse ? Math.PI : 0) : null;
+        if (sample) {
+          arm.position = sample.point;
+          arm.railYaw = sample.yaw+(span.departingDock && !span.frontTo ? Math.PI : 0);
+        }
+        arm.frontStationId = span.frontTo ?? (tick<span.end ? span.frontFrom : null);
+        arm.frontRailYaw = arm.frontStationId ? arm.railYaw : null;
       } else {
+        if (span.category==='turntable') arm.railYaw=span.yawStart+fraction*span.yawTravel;
+        else if(span.from[0]!==span.to[0] || span.from[1]!==span.to[1])
+          arm.railYaw=-Math.atan2(span.to[1]-span.from[1],span.to[0]-span.from[0]);
         arm.frontStationId = null;
         arm.frontRailYaw = null;
         arm.position = [span.from[0]+(span.to[0]-span.from[0])*fraction,
                         span.from[1]+(span.to[1]-span.from[1])*fraction];
       }
     }
+    const fraction=(tick-span.start)/(span.end-span.start);
+    if (span.category==='tool' && fraction>=.5 && span.action!=='工具確認')
+      arm.mountedTool=span.action==='卸下舊爪' ? null : span.tool;
     if (span.start <= tick && tick < span.end) {
       arm.status = span.category;
       arm.activeLabel = span.label;
       arm.activeStation = span.station || null;
+      if (span.category==='tool') arm.workPose=exchangePose(config,span,fraction);
+      if (span.category==='action' && config.stores[span.station]) {
+        arm.workPose=storeTransferPose(config.stores[span.station],span,fraction);
+        piece[span.piece].carriedBy=arm.workPose.gripped ? span.arm : null;
+        piece[span.piece].location=arm.workPose.gripped ? null : span.station;
+      }
       if (frontFixture(config.stations[span.station]) && span.category === 'action') {
         const action = span.action ?? span.label.split(' · ').at(-1);
         const pose = frontTransferPose(config.stations[span.station],action,span.mode,(tick-span.start)/(span.end-span.start));

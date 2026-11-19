@@ -9,7 +9,9 @@ import { machineLampState, machineStatusText, updateMachineLamp } from './machin
 import { monitorAreas, monitorAreaPose, monitorInteriorPose, monitorTarget } from './monitor.js';
 import { machiningCycle, machiningFrame, wheelOnStock, edmDischarging, edmSurfaceProgress, wireSlotLength } from './machining-animation.js';
 
-import { frontStation, frontTransferPose, poseFrontRobot, gripOffset, frontFixture } from './cnc-front-transfer.js';
+import { frontStation, poseFrontRobot, gripOffset, frontFixture } from './cnc-front-transfer.js';
+
+import {armPose,toolSeat,storeSlot,robotTrial} from './robot-motion.js';
 
 const $ = id => document.getElementById(id);
 const sim = buildSimulation();
@@ -62,6 +64,7 @@ controls.update();
 const overviewView={position:[25,30,29],target:[-1,0,0]};
 let monitorMode=false;
 let shellTrialView=false;
+let armTrial=null;
 let trialPieceId=null;
 let monitorView='inside';
 const monitorButton=$('monitor-mode-btn'),monitorInsideModeButton=$('monitor-inside-mode-btn'),monitorControls=$('monitor-controls');
@@ -151,7 +154,7 @@ function setFocusButton(button){
 }
 for(const button of document.querySelectorAll('.scene-focus button[data-focus]'))button.addEventListener('click',()=>{
   demoStopTick=null;
-  shellTrialView=false;
+  shellTrialView=false;armTrial=null;
   monitorMode=false;
   applyMonitorCutaway();
   camera.fov=45;camera.updateProjectionMatrix();
@@ -164,7 +167,8 @@ for(const button of document.querySelectorAll('.scene-focus button[data-focus]')
   setFocusButton(button);resize();
 });
 function openMonitor(view){
-  if(shellTrialView || view!==monitorView)demoStopTick=null;
+  if(armTrial || shellTrialView || view!==monitorView)demoStopTick=null;
+  armTrial=null;
   shellTrialView=false;
   monitorView=view;
   if(view==='inside'&&!monitorAreaList.find(area=>area.id===monitorZoneSelect.value).targets.some(id=>DEMO.stations[id])){
@@ -295,10 +299,17 @@ for(const [id,m] of Object.entries(DEMO.stations)) {
 for(const [id,s] of Object.entries(DEMO.stores)) {
   box(3.8,.6,2.4,id==='RAW'?0x4e819b:id==='FG'?0x41795f:0x796b9f,s.x,.3,s.z);
   box(3.9,.12,2.5,0x6a8799,s.x,.68,s.z);
+  box(3.9,.45,.86,0x6a8799,s.x,.965,s.z+.52);
 }
-for(const [id,s] of Object.entries(DEMO.service)) {
-  if(id.startsWith('I')) continue;
-  box(2,.45,1.8,0x7c6b99,s.x,.23,s.z);
+const dockTools={};
+for (const tool of DEMO.tools) {
+    const seat=toolSeat(DEMO,tool.dock,tool.kind);
+    const x=seat.x+.12*Math.cos(seat.yaw), z=seat.z-.12*Math.sin(seat.yaw);
+    box(.46,.20,.46,0x394651,x,.10,z);
+    box(.16,.80,.16,0x697985,x,.60,z);
+    const cradle=box(.24,.12,.35,0x434e57,x,seat.y-.20,z);
+    cradle.rotation.y=seat.yaw;
+    dockTools[tool.id]={seat};
 }
 const armMeshes={};
 for(const [id,color] of [['R1',0x60d4fa],['R2',0xf8bd70]]) {
@@ -317,6 +328,11 @@ const trialPicker = $('cnc-trial-station');
 for (const [id, station] of Object.entries(DEMO.stations)) {
   if (frontFixture(station)) trialPicker.add(new Option(id, id));
 }
+const armTrials=Object.fromEntries(['R1','R2'].map(id=>[id,robotTrial(sim,id)]));
+for(const [id,trial] of Object.entries(armTrials)) if(trial)trialPicker.add(new Option(id+' 機械手臂',id));
+trialPicker.addEventListener('change',()=>{
+  $('cnc-shell-demo').textContent=armTrials[trialPicker.value]?'手臂試播':'上下料試播';
+});
 trialPicker.value = shellStationId;
 
 function installCadShell(group, template, machine) {
@@ -372,6 +388,15 @@ function installRobodrillExterior(group, shell, machine) {
 }
 
 $('cnc-shell-demo').addEventListener('click', () => {
+  if(armTrials[trialPicker.value]){
+    document.querySelector('[data-focus="all"]').click();
+    armTrial=armTrials[trialPicker.value];trialMachiningWindow=null;
+    demoStopTick=armTrial.stop;
+    playback.seek(armTrial.start);playback.play();setFocusButton($('cnc-shell-demo'));
+    document.querySelector('.scene-overlay span:first-child').textContent=
+      armTrial.armId+' · 換爪與正門上下料 · '+armTrial.station+' · '+armTrial.piece;
+    return;
+  }
   shellStationId = trialPicker.value;
   const loading = sim.spans.find(s => s.station === shellStationId && s.mode === 'place');
   if (!loading) return;
@@ -467,7 +492,18 @@ Promise.all([...Object.values(modelFiles),'robot','track'].map(name=>loadModel(`
         wrist:group.getObjectByName('Wrist'),toolRough:group.getObjectByName('ToolRough'),
         toolProtect:group.getObjectByName('ToolProtect'),
         jaws:group.getObjectsByProperty('isMesh',true).filter(mesh=>/^(rough|protect)-jaw/.test(mesh.name))};
-      for (const jaw of armMeshes[id].jaws) jaw.userData.restZ=jaw.position.z;
+      const band=group.getObjectByName('arm-id-band');
+      band.material.color.set(id==='R1'?0x37bdc9:0xff8b36);
+      band.material.emissive.set(band.material.color).multiplyScalar(.10);
+    }
+    for (const [toolId,entry] of Object.entries(dockTools)) {
+      const rough=toolId.includes('ROUGH');
+      const tool=templates.robot.getObjectByName(rough?'ToolRough':'ToolProtect').clone(true);
+      tool.position.set(entry.seat.x,entry.seat.y,entry.seat.z);
+      tool.rotation.y=entry.seat.yaw;
+      for (const jaw of tool.children.filter(child=>child.name.includes('jaw')))
+        jaw.position.z=Math.sign(jaw.position.z)*(.25+(rough?.055:.060)+.04);
+      modelRoot.add(tool);entry.mesh=tool;
     }
     try {
       const {scene: shell} = await loadModel('/models/cnc-l01-shell.glb');
@@ -573,41 +609,23 @@ function updateScene(state){
   for(const id of DEMO.branchOrder){
     const rotor=turntableRotors[id];
     if(!rotor)continue;
-    let turns=0;
+    let yaw=0;
     for(const span of turntableSpans[id]){
-      if(state.tick>=span.end)turns++;
-      else if(state.tick>span.start)turns+=(state.tick-span.start)/(span.end-span.start);
-      else break;
+      if(state.tick<span.start)break;
+      yaw=span.yawStart+span.yawTravel*Math.min(1,(state.tick-span.start)/(span.end-span.start));
     }
-    rotor.rotation.y=turns*Math.PI/2;
+    rotor.rotation.y=yaw;
   }
   for(const [id,arm] of Object.entries(state.arms)){
     const obj=armMeshes[id];obj.group.position.set(arm.position[0],0,arm.position[1]);
-    const target=DEMO.stations[arm.activeStation]||DEMO.stores[arm.activeStation];
-    if (arm.frontRailYaw != null && obj.wrist) {
-      const carrying=Object.values(state.pieces).some(p=>p.carriedBy===id);
-      const pose=arm.frontPose ?? frontTransferPose(DEMO.stations[arm.frontStationId],null,carrying?'place':'pick',0);
-      poseFrontRobot(obj,arm.frontRailYaw,pose);
-    } else {
-      if (obj.shoulder) {
-        obj.shoulder.rotation.z=obj.elbow.rotation.z=obj.wrist.rotation.z=0;
-        for (const jaw of obj.jaws) jaw.position.z=jaw.userData.restZ;
-      }
-      if(target){
-        const angle=-Math.atan2(target.z-arm.position[1],target.x-arm.position[0]);
-        obj.group.rotation.y=THREE.MathUtils.lerp(obj.group.rotation.y,angle,.12);
-      }
-      if(obj.shoulder){
-        const working=arm.status==='action';
-        obj.shoulder.rotation.y=THREE.MathUtils.lerp(obj.shoulder.rotation.y,working?-.35:0,.09);
-        obj.elbow.rotation.y=THREE.MathUtils.lerp(obj.elbow.rotation.y,working ? .45 : -.12,.09);
-        obj.wrist.rotation.y=THREE.MathUtils.lerp(obj.wrist.rotation.y,working ? .15 : 0,.09);
-      }
-    }
-    if(obj.claw)obj.claw.material.color.set(arm.tool?.includes('PROTECT')?0xa8e5c7:0xe9d9a6);
-    if(obj.toolRough)obj.toolRough.visible=Boolean(arm.tool?.includes('ROUGH'));
-    if(obj.toolProtect)obj.toolProtect.visible=Boolean(arm.tool?.includes('PROTECT'));
+    const carrying=Object.values(state.pieces).some(p=>p.carriedBy===id);
+    if (obj.wrist) poseFrontRobot(obj,arm.railYaw,armPose(arm,carrying));
+    if(obj.claw)obj.claw.material.color.set(arm.mountedTool?.includes('PROTECT')?0xa8e5c7:0xe9d9a6);
+    if(obj.toolRough)obj.toolRough.visible=Boolean(arm.mountedTool?.includes('ROUGH'));
+    if(obj.toolProtect)obj.toolProtect.visible=Boolean(arm.mountedTool?.includes('PROTECT'));
   }
+  for (const [id,entry] of Object.entries(dockTools)) if(entry.mesh)
+    entry.mesh.visible=!(monitorMode && monitorView==='inside') && !Object.values(state.arms).some(a=>a.mountedTool===id);
   for(const [id,m] of Object.entries(state.machines)){
     const obj=machineMeshes[id];
     if(obj.gate){
@@ -661,19 +679,17 @@ function updateScene(state){
       (!monitorMode||monitorView!=='inside'||(p.location===monitorTargetSelect.value&&!p.carriedBy));
     mesh.rotation.y=0;
     if(p.carriedBy){const obj=armMeshes[p.carriedBy];
-      if(obj.wrist && state.arms[p.carriedBy].frontRailYaw != null){
+      if(obj.wrist){
         mesh.position.set(gripOffset.forward,gripOffset.height,0);
-        obj.wrist.localToWorld(mesh.position);modelRoot.worldToLocal(mesh.position);mesh.rotation.y=Math.PI/2;
-      }
-      else if(obj.wrist){obj.wrist.getWorldPosition(mesh.position);modelRoot.worldToLocal(mesh.position);mesh.position.y-=.25;}
-      else {const a=obj.group.position;mesh.position.set(a.x+1.7,DEMO.railHeightM+1.5,a.z);}}
+        obj.wrist.localToWorld(mesh.position);modelRoot.worldToLocal(mesh.position);mesh.rotation.y=armPose(state.arms[p.carriedBy],true).yaw;
+      } else {const a=obj.group.position;mesh.position.set(a.x+1.7,DEMO.railHeightM+1.5,a.z);}}
     else if(DEMO.stations[p.location]){
       const s=DEMO.stations[p.location];
       const fixture=frontFixture(s);
       mesh.position.set(s.dock[0],fixture.height,s.z+fixture.depth);
       mesh.rotation.y=Math.PI/2;
     }
-    else {const s=DEMO.stores[p.location];const index=Number(id.slice(1))-1;mesh.position.set(s.x-1.25+(index%3)*1.25,.84,s.z-.47+Math.floor(index/3)*.9);}
+    else {const slot=storeSlot(DEMO.stores[p.location],id);mesh.position.set(slot.x,slot.y,slot.z);mesh.rotation.y=slot.yaw;}
     const cutting=p.location==='WIRE-01' && processSpanAt(p.location,state.tick);
     const progress=p.stage>=wireStage ? 1 : cutting ? (state.tick-cutting.start)/(cutting.end-cutting.start) : 0;
     const length=wireSlotLength(progress), kerf=mesh.userData.kerf;
@@ -736,9 +752,9 @@ function updatePanel(state){
   $('play-btn').textContent=playback.playing?'❚❚ 暫停':'▶ 繼續回放';
 }
 $('play-btn').addEventListener('click',()=>{if(playback.playing)playback.pause();else {if(playback.tick>=sim.durationTicks)playback.seek(0);playback.play();}updatePanel(stateAt(sim,playback.tick));});
-$('reset-btn').addEventListener('click',()=>{demoStopTick=null;playback.pause();playback.seek(0);updatePanel(stateAt(sim,0));});
-$('seek').addEventListener('input',e=>{demoStopTick=null;playback.pause();playback.seek(Number(e.target.value));updatePanel(stateAt(sim,playback.tick));});
-$('speed-select').addEventListener('change',e=>{trialMachiningWindow=null;playback.rate=Number(e.target.value);});
+$('reset-btn').addEventListener('click',()=>{demoStopTick=null;armTrial=null;playback.pause();playback.seek(0);updatePanel(stateAt(sim,0));});
+$('seek').addEventListener('input',e=>{demoStopTick=null;armTrial=null;playback.pause();playback.seek(Number(e.target.value));updatePanel(stateAt(sim,playback.tick));});
+$('speed-select').addEventListener('change',e=>{if(armTrial){armTrial=null;demoStopTick=null;}trialMachiningWindow=null;playback.rate=Number(e.target.value);});
 $('interpret-btn').addEventListener('click',async()=>{
   const btn=$('interpret-btn'),result=$('request-result');btn.disabled=true;result.textContent='正在呼叫本機 LLM 服務…';
   try{const response=await fetch('/api/interpret',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:$('request-text').value})});const body=await response.json();if(!response.ok)throw new Error(body.error||`HTTP ${response.status}`);result.replaceChildren();const title=document.createElement('strong');title.textContent='LLM 摘要 · 需確認後才排程';result.append(title);const detail=document.createElement('div');detail.textContent=`配方 ${body.recipeId||'未匹配'} · 數量 ${body.quantity??'未指定'} · 交期 ${body.dueMinutes??'未指定'} 分鐘 · ${body.notes||''}`;result.append(detail);}
@@ -748,7 +764,16 @@ $('interpret-btn').addEventListener('click',async()=>{
 let lastPanel=-Infinity;
 function frame(now){
   requestAnimationFrame(frame);
-  if (shellTrialView && demoStopTick !== null && trialMachiningWindow) {
+  if (armTrial && demoStopTick!==null) {
+    const t=playback.tick, trial=armTrial;
+    const span=sim.spans.find(s=>s.arm===trial.armId && s.start<=t && t<s.end);
+    const rate=t>=trial.done && t<trial.pickup ? 600 : t>=trial.machining && t<trial.done ? 60 :
+      ['tool','action'].includes(span?.category) ? 2 : 30;
+    playback.rate=rate; $('speed-select').value=String(rate);
+    const boundary=[span?.end,trial.machining,trial.done,trial.pickup,trial.stop].filter(v=>v>t).sort((a,b)=>a-b)[0];
+    playback.advance(now);
+    if(playback.tick>boundary)playback.seek(boundary);
+  } else if (shellTrialView && demoStopTick !== null && trialMachiningWindow) {
     const {start, end, pickup} = trialMachiningWindow;
     const boundary = [start,end,pickup].find(tick => tick > playback.tick);
     const rate = playback.tick < start || playback.tick >= pickup ? 2 : playback.tick < end ? 60 : 600;
@@ -762,6 +787,13 @@ function frame(now){
   }
   const state=stateAt(sim,playback.tick);
   updateScene(state);
+  if (armTrial) {
+    const station=DEMO.stations[armTrial.station], a=state.arms[armTrial.armId];
+    const atMachine=state.tick>=armTrial.machining && state.tick<armTrial.pickup;
+    const x=atMachine?station.x:a.position[0], z=atMachine?station.z+1.6:a.position[1];
+    controls.target.set(x,1.44,z).multiplyScalar(modelScale);
+    camera.position.copy(controls.target).add(new THREE.Vector3(-6,3.8,6.4).multiplyScalar(modelScale));
+  }
   if(!monitorMode)controls.update();
   updateLabels();
   if(now-lastPanel>110){updatePanel(state);lastPanel=now;}

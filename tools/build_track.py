@@ -156,7 +156,7 @@ def make_track_network(layout):
         cylinder(f'{branch["id"]}_deck', (0, 0, 0), radius - .08, .11, disc_mat, rotor, 48)
         rotor_rails = BoxBatch()
         for side in (-1, 1):
-            rotor_rails.add((0, side * gauge / 2), (1, 0), 1.55, .085, .11, .095)
+            rotor_rails.add((0, side * gauge / 2), (1, 0), 1.55, .085, .11, .045)
         rotor_rails.create(f'{branch["id"]}_rotor_rails', steel, rotor)
         cylinder(f'{branch["id"]}_pivot', (0, 0, .065), .17, .08, amber, rotor, 24)
 

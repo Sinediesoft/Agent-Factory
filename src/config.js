@@ -40,19 +40,19 @@ export const DEMO = Object.freeze({
     'EDM-01': { zone: 'EDM', x: 16, z: -1, dock: [16, 3], type: 'EDM', label: '放電' },
   },
   stores: {
-    RAW: { zone: 'RAW', branch: 'LOGISTICS', x: -5, z: 16, dock: [-2.8, 14.4], label: '原料 6 格' },
-    WIP: { zone: 'WIP', branch: 'LOGISTICS', x: 0, z: 17, dock: [0, 14.5], label: '在製品 6 槽' },
-    FG: { zone: 'FG', branch: 'LOGISTICS', x: 5, z: 16, dock: [2.8, 14.4], label: '成品 6 格' },
+    RAW: { zone: 'RAW', branch: 'LOGISTICS', x: -3, z: 22.60, dock: [-3, 20], label: '原料 6 格' },
+    WIP: { zone: 'WIP', branch: 'LOGISTICS', x: 2, z: 23.60, dock: [2, 21], label: '在製品 6 槽' },
+    FG: { zone: 'FG', branch: 'LOGISTICS', x: 7, z: 22.60, dock: [7, 20], label: '成品 6 格' },
   },
   service: {
-    T1: { zone: 'SERVICE', x: -17, z: 5 }, T2: { zone: 'SERVICE', x: -17, z: 8 },
-    I1: { zone: 'SERVICE', x: -20, z: 5 }, I2: { zone: 'SERVICE', x: -20, z: 8 },
+    T1: { zone: 'SERVICE', x: -15, z: 1.5 }, T2: { zone: 'SERVICE', x: -15, z: 12.5 },
+    I1: { zone: 'SERVICE', x: -20, z: 4 }, I2: { zone: 'SERVICE', x: -20, z: 10 },
   },
   tools: [
-    { id: 'GRIP-ROUGH-01', kind: 'ROUGH', slot: 'S-ROUGH-01' },
-    { id: 'GRIP-ROUGH-02', kind: 'ROUGH', slot: 'S-ROUGH-02' },
-    { id: 'GRIP-PROTECT-01', kind: 'PROTECT', slot: 'S-PROTECT-01' },
-    { id: 'GRIP-PROTECT-02', kind: 'PROTECT', slot: 'S-PROTECT-02' },
+    { id: 'GRIP-ROUGH-01', kind: 'ROUGH', slot: 'S-ROUGH-01', dock:'T1' },
+    { id: 'GRIP-ROUGH-02', kind: 'ROUGH', slot: 'S-ROUGH-02', dock:'T2' },
+    { id: 'GRIP-PROTECT-01', kind: 'PROTECT', slot: 'S-PROTECT-01', dock:'T1' },
+    { id: 'GRIP-PROTECT-02', kind: 'PROTECT', slot: 'S-PROTECT-02', dock:'T2' },
   ],
   recipe: {
     id: 'PHONE-MOLD-6', version: '1.74-synthetic', title: '手機外殼模具工件', quantity: 6,

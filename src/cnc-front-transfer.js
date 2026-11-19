@@ -52,16 +52,25 @@ export function frontTransferPose(station, action, mode, fraction) {
   return {reach,height,jaw,door,onFixture};
 }
 
+const railSegments = new WeakMap();
 export function railSample(path, fraction) {
-  const lengths = path.slice(1).map((p,i) => Math.hypot(p[0]-path[i][0],p[1]-path[i][1]));
-  let remaining = fraction*lengths.reduce((a,b)=>a+b,0);
-  for (let i=0;i<lengths.length;i++) {
-    if (remaining<=lengths[i] || i===lengths.length-1) {
-      const a=path[i], b=path[i+1], f=lengths[i] ? Math.min(1,remaining/lengths[i]) : 0;
-      return {point:[lerp(a[0],b[0],f),lerp(a[1],b[1],f)], yaw:-Math.atan2(b[1]-a[1],b[0]-a[0])};
+  let route = railSegments.get(path);
+  if (!route) {
+    let total=0;
+    const segments=[];
+    for (let i=1;i<path.length;i++) {
+      const a=path[i-1], b=path[i], length=Math.hypot(b[0]-a[0],b[1]-a[1]);
+      if (!length) continue;
+      segments.push({a,b,start:total,length,yaw:-Math.atan2(b[1]-a[1],b[0]-a[0])});
+      total+=length;
     }
-    remaining-=lengths[i];
+    route={segments,total};railSegments.set(path,route);
   }
+  if (!route.total) return null;
+  const distance=Math.max(0,Math.min(1,fraction))*route.total;
+  const {a,b,start,length,yaw}=route.segments.find(s=>distance<=s.start+s.length) ?? route.segments.at(-1);
+  const t=(distance-start)/length;
+  return {point:[lerp(a[0],b[0],t),lerp(a[1],b[1],t)],yaw};
 }
 
 // Planar two-link IK with a level wrist. Link lengths and rest angles come from the loaded robot.
@@ -77,7 +86,7 @@ export function poseFrontRobot(robot, railYaw, pose) {
   const forearm = Math.atan2(dy-a*Math.sin(elbowUp),dx-a*Math.cos(elbowUp));
   const pitch = elbowUp-Math.atan2(upper.y,upper.x);
   const bend = forearm-Math.atan2(lower.y,lower.x)-pitch;
-  shoulder.rotation.set(0,Math.PI/2-railYaw,pitch,'YXZ');
+  shoulder.rotation.set(0,(pose.yaw ?? Math.PI/2)-railYaw,pitch,'YXZ');
   elbow.rotation.set(0,0,bend);
   wrist.rotation.set(0,0,-pitch-bend);
   for (const jaw of robot.jaws) {

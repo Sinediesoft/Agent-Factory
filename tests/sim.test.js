@@ -9,6 +9,28 @@ import { makeTrackLayout, validateTrackLayout } from '../src/track-layout.js';
 import { machineLampState, machineStatusText } from '../src/machine-status.js';
 import { monitorAreas, monitorAreaPose, monitorInteriorPose } from '../src/monitor.js';
 import { machiningCycle, machiningFrame } from '../src/machining-animation.js';
+import { robotTrial } from '../src/robot-motion.js';
+
+test('each robot trial exchanges a mounted gripper and retrieves the same finished workpiece', () => {
+  const sim = buildSimulation();
+  for (const arm of ['R1', 'R2']) {
+    const trial = robotTrial(sim, arm);
+    const { exchange, load, piece, station } = trial;
+    const install = sim.spans.find(s => s.taskId === load.id && s.action === '裝上新爪');
+    const unlock = Math.ceil((exchange.start + exchange.end) / 2);
+    const lock = Math.ceil((install.start + install.end) / 2);
+    const mounted = tick => stateAt(sim, tick).arms[arm].mountedTool;
+    assert.equal(mounted(unlock - 1), exchange.oldTool);
+    assert.equal(mounted(unlock), null);
+    assert.equal(mounted(lock - 1), null);
+    assert.equal(mounted(lock), install.tool);
+    assert.notEqual(install.tool, exchange.oldTool);
+    assert.equal(stateAt(sim, trial.machining).machines[station].status, 'processing');
+    assert.equal(stateAt(sim, trial.done).machines[station].status, 'ready');
+    assert.ok(trial.done <= trial.pickup && trial.pickup < trial.stop);
+    assert.equal(stateAt(sim, trial.stop).pieces[piece].carriedBy, arm);
+  }
+});
 
 test('machining animation follows process spans and freezes at the same simulation tick', () => {
   const sim = buildSimulation();
