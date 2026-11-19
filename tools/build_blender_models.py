@@ -361,6 +361,34 @@ def make_grind():
     return root
 
 
+def arm_cover(kind, parent, start, end, width, height):
+    """Fit a ComfyUI-generated rigid casting to this link's local frame."""
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=str(ROOT/'tools/comfyui/robot'/f'{kind}-depth.glb'))
+    imported = set(bpy.data.objects)-before
+    body, = [item for item in imported if item.type == 'MESH']
+    points = [body.matrix_world @ v.co for v in body.data.vertices]
+    lo = Vector([min(v[i] for v in points) for i in range(3)])
+    hi = Vector([max(v[i] for v in points) for i in range(3)])
+    axis = Vector(end)-Vector(start)
+    size = (axis.length,width,height)
+    for vert, point in zip(body.data.vertices,points):
+        vert.co = tuple(((point[i]-lo[i])/(hi[i]-lo[i])-.5)*size[i] for i in range(3))
+    body.parent = parent
+    body.location = (Vector(start)+Vector(end))*.5
+    body.scale = (1,1,1)
+    body.rotation_mode='XYZ'
+    body.rotation_euler=(0,-math.atan2(axis.z,axis.x),0)
+    body.name = f'comfy-{kind}-shell'
+    body.data.materials.clear()
+    body.data.materials.append(YELLOW)
+    for face in body.data.polygons:
+        face.use_smooth = True
+    for item in imported-{body}:
+        bpy.data.objects.remove(item,do_unlink=True)
+    return body
+
+
 def make_robot():
     root=empty('RobotRoot')
     cube('rail-carriage',(0,0,2.54),(1.55,1.25,.26),BLACK,root,.09)
@@ -371,30 +399,61 @@ def make_robot():
     cylinder('rotary-waist',(0,0,3.03),.43,.43,YELLOW,root,32)
     shoulder=empty('Shoulder',root,(0,0,3.18))
     cylinder('J2-hinge',(0,0,0),.32,.44,BLACK,shoulder,32,(math.pi/2,0,0))
-    link('upper-arm',(0,0,.05),(1.12,0,.65),.26,YELLOW,shoulder)
-    cube('upper-arm-cover',(.55,-.16,.39),(.91,.16,.28),YELLOW,shoulder,.1)
+    arm_cover('upper',shoulder,(.095,0,.07),(1.035,0,.605),.47,.48)
+    cylinder('shoulder-access',(0,-.239,0),.195,.045,STEEL,shoulder,32,(math.pi/2,0,0))
     elbow=empty('Elbow',shoulder,(1.12,0,.65))
     cylinder('J3-hinge',(0,0,0),.28,.4,BLACK,elbow,32,(math.pi/2,0,0))
-    link('forearm',(0,0,0),(.97,0,-.23),.19,YELLOW,elbow)
-    cube('forearm-cover',(.52,-.13,-.09),(.8,.14,.22),YELLOW,elbow,.08)
+    arm_cover('fore',elbow,(.065,0,-.015),(.92,0,-.217),.34,.35)
+    cylinder('elbow-access',(0,-.213,0),.15,.035,STEEL,elbow,32,(math.pi/2,0,0))
     wrist=empty('Wrist',elbow,(.97,0,-.23))
     cylinder('J4-wrist',(.15,0,-.06),.19,.35,BLACK,wrist,24,(0,math.pi/2,0))
-    cylinder('J5-wrist',(.35,0,-.09),.14,.27,YELLOW,wrist,24,(0,math.pi/2,0))
+    arm_cover('wrist',wrist,(.23,0,-.075),(.478,0,-.10),.26,.26)
+    cylinder('tool-flange',(.495,0,-.1),.10,.040,STEEL,wrist,32,(0,math.pi/2,0))
     tool_rough=empty('ToolRough',wrist,(.52,0,-.1))
     cube('rough-adapter',(.12,0,0),(.25,.3,.28),STEEL,tool_rough,.03)
+    cube('rough-finger-slide',(.193,0,-.017),(.08,.70,.075),STEEL,tool_rough,.009)
     for y in [-.19,.19]:
         cube('rough-jaw',(.34,y,-.03),(.4,.11,.2),BLACK,tool_rough,.018)
     tool_protect=empty('ToolProtect',wrist,(.52,0,-.1))
     cube('protect-adapter',(.12,0,0),(.25,.32,.28),STEEL,tool_protect,.03)
+    cube('protect-finger-slide',(.193,0,-.017),(.08,.70,.075),STEEL,tool_protect,.009)
     for y in [-.22,.22]:
         cube('protect-jaw',(.35,y,-.03),(.42,.12,.24),PAD,tool_protect,.025)
-    link('external-cable',(-.22,.24,3.0),(.54,.24,3.61),.035,BLACK,root)
+    cube('arm-id-band',(0,-.637,2.55),(1.10,.023,.10),BLUE,root,.015)
     text_mesh('arm-brand','FANUC',(-.12,-.27,3.01),.11,BLACK,root)
     assembly=empty('RobotAssembly',root,(0,0,-2.055))
     for obj in list(bpy.data.objects):
         if obj.parent == root and obj != assembly:
             obj.parent=assembly
     return root
+
+
+def equip_robot_park(root,layout,index):
+    """Show the empty wrist and all four real grippers in their changer cradles."""
+    park=next(d['path'] for d in layout['docks'] if d['id']==f'I{index}')
+    root.rotation_euler.z=-math.atan2(park[-1][1]-park[-2][1],park[-1][0]-park[-2][0])
+    band=next(o for o in root.children_recursive if o.name.startswith('arm-id-band'))
+    band.data.materials[0]=material('robot-band-'+str(index),(.08,.65,.72) if index==1 else (.99,.39,.07))
+    dock=next(d for d in layout['docks'] if d['id']==f'T{index}')
+    x,z=dock['path'][-1]
+    for kind,prefix,offset in [('ROUGH','ToolRough',-.29),('PROTECT','ToolProtect',.29)]:
+        tool=next(o for o in root.children_recursive if o.name.startswith(prefix))
+        yaw=(math.pi/2 if index==1 else -math.pi/2)+offset
+        sx,sy=x+2.10*math.cos(yaw),-z+2.10*math.sin(yaw)
+        parked=empty(f'GRIP-{kind}-0{index}',None,(sx,sy,1.26))
+        parked.rotation_euler.z=yaw
+        for obj in tool.children:
+            copy=obj.copy()
+            bpy.context.collection.objects.link(copy)
+            copy.parent=parked
+            if 'jaw' in obj.name:
+                copy.location.y=math.copysign(.25+(.055 if kind=='ROUGH' else .06)+.04,copy.location.y)
+            obj.hide_render=True
+            obj.hide_set(True)
+        cx,cy=sx+.12*math.cos(yaw),sy+.12*math.sin(yaw)
+        cube('rack-foot',(cx,cy,.10),(.46,.46,.20),BLACK)
+        cube('rack-post',(cx,cy,.60),(.16,.16,.80),STEEL)
+        cube('rack-cradle',(cx,cy,1.06),(.24,.35,.12),STEEL).rotation_euler.z=yaw
 
 
 def export_model(name, builder):
@@ -424,11 +483,16 @@ def make_full_scene():
             root=builders[kind]()
         root.name=ident
         root.location=(x,-z,0)
-    for ident,x,z in [('R1',-20,5),('R2',-20,8)]:
-        root=make_robot();root.name=ident;root.location=(x,-z,0)
+    for i in (1,2):
+        x,z=next(d['path'][-1] for d in layout['docks'] if d['id']==f'I{i}')
+        root=make_robot();root.name=f'R{i}';root.location=(x,-z,0)
+        equip_robot_park(root,layout,i)
     make_track_network(layout)
-    for ident,x,z in [('RAW',-5,16),('WIP',0,17),('FG',5,16)]:
-        cube(ident,(x,-z,.4),(3.5,2.2,.8),STEEL,None,.06)
+    for dock in layout['docks']:
+        if 'storePosition' in dock:
+            x,z=dock['storePosition']
+            cube(dock['id'],(x,-z,.37),(3.9,2.5,.74),STEEL,None,.06)
+            cube(dock['id']+'-upper-tier',(x,-z-.52,.965),(3.9,.86,.45),STEEL,None,.02)
     # Camera and preview: still image is evidence of mesh layout, not collision validation.
     bpy.ops.object.camera_add(location=(26,-43,48))
     camera=bpy.context.object

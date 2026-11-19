@@ -12,7 +12,7 @@
 | [`public/models/grind.glb`](../public/models/grind.glb) | ComfyUI 研磨機外殼、左開滑門、磁力工作台、水平主軸砂輪與弧形護罩 |
 | [`public/models/wire.glb`](../public/models/wire.glb) | ComfyUI 固定外殼、升降槽門、電極線與上下線導頭 |
 | [`public/models/edm.glb`](../public/models/edm.glb) | ComfyUI 雙柱式外殼、升降槽門、滑枕與成形銅電極 |
-| [`public/models/robot.glb`](../public/models/robot.glb) | R1 / R2 共用的軌道載台與關節手臂 |
+| [`public/models/robot.glb`](../public/models/robot.glb) | R1 / R2 共用的滑座、ComfyUI 上臂／前臂／腕部外殼、法蘭、粗加工與保護夾爪 |
 | [`public/models/track.glb`](../public/models/track.glb) | 主環、8 個區內環、6 組支軌、14 個停靠接入段與 6 座轉盤 |
 | [`docs/visuals/agent-factory-blender-preview.png`](visuals/agent-factory-blender-preview.png) | Blender 全景預覽圖 |
 | [`docs/visuals/agent-factory-cnc-detail.png`](visuals/agent-factory-cnc-detail.png) | 四台 CNC 的近景 |
@@ -50,4 +50,4 @@ blender --background --python tools/build_blender_models.py
 
 四台 CNC 參考 [FANUC ROBODRILL 官方系列介紹](https://www.fanuc.eu/eu-en/robodrill-compact-cnc-machining-centers) 的封閉式機台、黃色門框與控制面板方向；線割參考 [FANUC ROBOCUT 官方介紹](https://www.fanuc.eu/uk-en/robocut-wire-cut-edm-machines)；手臂參考 [FANUC M-10 系列](https://www.fanucamerica.com/products/series/m-10) 的黃色關節形式。這些是視覺參考，**沒有指定真實機型**。研磨與放電機採合成示範外觀；企劃書的 FANUC 控制器方向不等於這兩台設備已選定 FANUC 製造機型。
 
-模型尺寸以現有公尺制示範布局為準，外部停靠位與機台中心分開。軌道網路的接點、環路閉合與停靠端點已由測試檢查；目前沒有求解實際車體包絡、轉轍機構、完整掃掠碰撞或實機可達性，仍屬視覺與流程示範。
+模型尺寸採現有公尺制示範布局，外部停靠位對準各機台正門。軌道接點、環路閉合與停靠端點均有測試。雙臂使用匯出後的幾何，每 0.1 秒檢查一次預設六件工件的沿軌移動、換爪、正門上下料與回程。連續掃掠碰撞及實機可達性需要另外驗證。[手臂建模與驗證範圍](../tools/comfyui/robot/README.md)

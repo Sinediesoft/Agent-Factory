@@ -72,7 +72,9 @@ def surface_from_views(images, masks, session, machine):
 
     # Reserve the machine-specific machining bay and front transfer corridor.
     gx, gy, gz = grid.T
-    if machine == 'edm':
+    if machine == 'robot-link':
+        chamber = np.zeros_like(inside)
+    elif machine == 'edm':
         chamber = (abs(gx) < 1.12) & (gy > .66) & (gy < 2.62) & (gz > -.78)
         ram_bore = (abs(gx) < .26) & (abs(gz-.70) < .26) & (gy > 2.48)
         chamber |= ram_bore
@@ -86,7 +88,7 @@ def surface_from_views(images, masks, session, machine):
     verts, faces, _, _ = marching_cubes(field, level=.5, spacing=(PITCH_METRES,)*3)
     mesh = trimesh.Trimesh(vertices=verts+origin, faces=faces)
     mesh = max(mesh.split(only_watertight=False), key=lambda part: part.area)
-    mesh = mesh.simplify_quadric_decimation(face_count=min(12000, len(mesh.faces)))
+    mesh = mesh.simplify_quadric_decimation(face_count=min(2200 if machine == 'robot-link' else 12000, len(mesh.faces)))
     mesh.fix_normals()
     return mesh
 
@@ -126,5 +128,9 @@ class GrindDepthShell(WireDepthShell):
     machine = 'grind'
 
 
-NODE_CLASS_MAPPINGS = {'WireDepthShell': WireDepthShell, 'EdmDepthShell': EdmDepthShell,
+class ArmLinkDepthShell(WireDepthShell):
+    machine = 'robot-link'
+
+
+NODE_CLASS_MAPPINGS = {'ArmLinkDepthShell': ArmLinkDepthShell, 'WireDepthShell': WireDepthShell, 'EdmDepthShell': EdmDepthShell,
                        'GrindDepthShell': GrindDepthShell}

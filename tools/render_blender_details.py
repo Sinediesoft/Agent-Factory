@@ -20,7 +20,7 @@ camera.data.type='ORTHO'
 
 for name,position,target,scale in [
     ('agent-factory-cnc-detail.png',(-20,-6,16),(-14,16.5,1.2),26),
-    ('agent-factory-robot-detail.png',(-8,-19,10),(-18,-6.5,2.7),15),
+    ('agent-factory-robot-detail.png',(-27,-22,9),(-18,-7,1),15),
     ('agent-factory-track-detail.png',(22,-1,17),(11,7,.4),18),
 ]:
     camera.location=position

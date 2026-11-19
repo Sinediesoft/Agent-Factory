@@ -1,23 +1,10 @@
-import { DEMO, secondsToTicks, ticksToSeconds, pointFor, branchFor, stationZone } from './config.js';
+import { DEMO, secondsToTicks, ticksToSeconds, branchFor } from './config.js';
 
-import { makeTrackLayout, stationRailPath } from './track-layout.js';
+import { makeTrackLayout, stationRailPath, logisticsPath } from './track-layout.js';
 
 const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
-const hub = { CNC: [-14, -10], GRIND: [0, -13], WIRE: [14, -7], EDM: [14, 7], LOGISTICS: [0, 13], SERVICE: [-15, 7] };
 const isMachine = (id, c) => Boolean(c.stations[id]);
 const toolKind = stage => stage >= 2 ? 'PROTECT' : 'ROUGH';
-const areaSlots = {
-  CNC: ['CNC-L01', 'CNC-R01', 'CNC-R02', 'CNC-L02'],
-  GRIND: ['GRIND-01'], WIRE: ['WIRE-01'], EDM: ['EDM-01'],
-  RAW: ['RAW'], WIP: ['WIP'], FG: ['FG'], SERVICE: ['I1', 'T1', 'T2', 'I2'],
-};
-const ringResource = (id, config) => {
-  const zone = stationZone(id, config);
-  const slot = areaSlots[zone]?.indexOf(id) ?? -1;
-  if (slot < 0) throw new Error(`No ring segment for ${id}`);
-  return `ring:${zone}:${slot}`;
-};
-
 export class ResourceCalendar {
   constructor() { this.intervals = new Map(); }
   clone() {
@@ -83,20 +70,17 @@ export class ResourceCalendar {
 export function routePhases(from, to, config = DEMO, layout = makeTrackLayout(config)) {
   if (from === to) return [];
   const a = branchFor(from, config), b = branchFor(to, config);
-  const az = stationZone(from, config), bz = stationZone(to, config);
-  const p0 = pointFor(from, config), p1 = pointFor(to, config);
   const speed = config.travelSpeedMps;
   const travel = (label, fromPoint, toPoint, resources, extraSeconds = 0, category = 'travel') => ({
     label, from: fromPoint, to: toPoint, resources, category,
     ticks: secondsToTicks(distance(fromPoint, toPoint) / speed + extraSeconds, config),
   });
-  const frontZone = zone => layout.docks.some(dock => dock.zone === zone && dock.machinePosition);
-  const junction = zone => frontZone(zone) ? layout.branches.find(branch => branch.id === zone).paths[0].at(-1) : hub[zone];
-  function frontTravel(start, end, zone) {
-    const path = stationRailPath(layout, start, end, zone);
+  const junction = zone => layout.branches.find(branch => branch.id === zone).paths[0].at(-1);
+  function dockTravel(start, end, zone) {
+    const path = zone==='LOGISTICS' ? logisticsPath(layout,start,end) : stationRailPath(layout,start,end,zone);
     const length = path.slice(1).reduce((sum,p,i) => sum + distance(path[i],p), 0);
     const ring = layout.rings.find(r => r.id === zone);
-    const onRing = p => Math.abs(distance(p,ring.center)-ring.radiusM)<1e-6;
+    const onRing = p => ring && Math.abs(distance(p,ring.center)-ring.radiusM)<1e-6;
     const occupied = new Set();
     for (let i=1; i<path.length; i++) {
       const a=path[i-1], b=path[i];
@@ -110,29 +94,15 @@ export function routePhases(from, to, config = DEMO, layout = makeTrackLayout(co
     for (const id of [start,end]) if (id !== zone) resources.push(`dock:${id}`);
     return {label: `${start} → ${end} 軌道移動`, category:'travel', resources,
       path, from:path[0], to:path.at(-1), ticks:secondsToTicks(length/speed,config),
-      frontFrom: start === zone ? null : start, frontTo: end === zone ? null : end};
+      departingDock:start!==zone, frontFrom:config.stations[start] ? start : null, frontTo:config.stations[end] ? end : null};
   }
-  if (a === b) {
-    if (frontZone(a)) return [frontTravel(from, to, a)];
-    const resources = a === 'LOGISTICS' ? ['branch:LOGISTICS', ringResource(from, config), ringResource(to, config)]
-      : (() => {
-        const slots = areaSlots[az];
-        const start = slots.indexOf(from), end = slots.indexOf(to);
-        const occupied = [];
-        let i = start;
-        do { occupied.push(`ring:${az}:${i}`); i = (i + 1) % slots.length; } while (i !== end);
-        occupied.push(`ring:${az}:${end}`);
-        return [...new Set(occupied)];
-      })();
-    return [travel(`${az} → ${bz} 區內順向通行`, p0, p1, resources,
-      distance(p0, hub[a]) / speed + distance(hub[a], p1) / speed - distance(p0, p1) / speed)];
-  }
+  if (a === b) return [dockTravel(from,to,a)];
   const phases = [];
   const turn = config.turntable;
-  phases.push(frontZone(a) ? frontTravel(from, a, a) : travel(`${az} 區內環 → 出口`, p0, hub[a], [ringResource(from, config)]));
-  phases.push(travel(`${a} 支軌出區`, junction(a), config.branchPoints[a], [`branch:${a}`], turn.enterS + turn.settleS, 'branch'));
+  phases.push(dockTravel(from,a,a));
+  phases.push(travel(`${a} 支軌出區`, junction(a), config.branchPoints[a], [`branch:${a}`,`turntable:${a}`,`feeder:${a}`], turn.enterS + turn.settleS, 'branch'));
   phases.push({ label: `${a} 轉盤定位與清空`, from: config.branchPoints[a], to: config.branchPoints[a],
-    resources: [`branch:${a}`, `turntable:${a}`], category: 'turntable',
+    resources: [`branch:${a}`, `turntable:${a}`, `feeder:${a}`], category: 'turntable',
     ticks: secondsToTicks(turn.rotateS + turn.confirmS + turn.clearS, config) });
   const order = config.branchOrder;
   let i = order.indexOf(a), goal = order.indexOf(b);
@@ -140,15 +110,21 @@ export function routePhases(from, to, config = DEMO, layout = makeTrackLayout(co
   while (i !== goal) {
     const j = (i + 1) % order.length;
     phases.push(travel(`主環 ${order[i]} → ${order[j]}`, config.branchPoints[order[i]],
-      config.branchPoints[order[j]], [`main:${i}`]));
+      config.branchPoints[order[j]], [`main:${i}`,`turntable:${order[i]}`,`turntable:${order[j]}`]));
     i = j;
   }
   phases.push({ label: `${b} 轉盤進區定位`, from: config.branchPoints[b], to: config.branchPoints[b],
-    resources: [`branch:${b}`, `turntable:${b}`], category: 'turntable',
+    resources: [`branch:${b}`, `turntable:${b}`, `feeder:${b}`], category: 'turntable',
     ticks: secondsToTicks(turn.enterS + turn.settleS + turn.rotateS + turn.confirmS, config) });
   phases.push(travel(`${b} 支軌進區並清空`, config.branchPoints[b], junction(b),
-    [`branch:${b}`], turn.clearS, 'branch'));
-  phases.push(frontZone(b) ? frontTravel(b, to, b) : travel(`${bz} 區內環 → 停靠`, hub[b], p1, [ringResource(to, config)]));
+    [`branch:${b}`,`turntable:${b}`,`feeder:${b}`], turn.clearS, 'branch'));
+  phases.push(dockTravel(b,to,b));
+  const heading = leg => -Math.atan2(leg.to[1]-leg.from[1],leg.to[0]-leg.from[0]);
+  for(const [index,leg] of phases.entries()) if(leg.category==='turntable') {
+    leg.yawStart=heading(phases[index-1]);
+    const delta=heading(phases[index+1])-leg.yawStart;
+    leg.yawTravel=Math.atan2(Math.sin(delta),Math.cos(delta));
+  }
   return phases;
 }
 
@@ -216,12 +192,13 @@ export function buildSimulation(config = DEMO, options = {}) {
     }
     return { start, end: cursor };
   }
+  const availableTool = (dock,kind) => tools.find(t=>t.kind===kind && (!t.dock || t.dock===dock) && !t.heldBy && !t.reservedBy);
   function scheduleTool(arm, task, needed, ready) {
     if (arm.tool?.kind === needed) return ready;
-    const tool = tools.find(t => t.kind === needed && !t.heldBy && !t.reservedBy);
+    const dock = arm.id === 'R1' ? 'T1' : 'T2';
+    const tool = availableTool(dock,needed);
     if (!tool) throw new Error(`No free ${needed} gripper`);
     const old = arm.tool;
-    const dock = arm.id === 'R1' ? 'T1' : 'T2';
     let cursor = scheduleRoute(arm, task, arm.location, dock, ready);
     const steps = old ? [['卸下舊爪', config.tool.removeS], ['裝上新爪', config.tool.installS], ['工具確認', config.tool.verifyS]]
       : [['首次裝爪', config.tool.installS], ['工具確認', config.tool.verifyS]];
@@ -235,7 +212,7 @@ export function buildSimulation(config = DEMO, options = {}) {
     for (const [label, seconds] of steps) {
       const end = cursor + secondsToTicks(seconds, config);
       addSpan({ start: cursor, end, category: 'tool', label: `${dock} · ${label}`, arm: arm.id,
-        taskId: task.id, piece: task.piece, tool: tool.id, oldTool: old?.id ?? null, resources });
+        taskId: task.id, piece: task.piece, station:dock, action:label, tool: tool.id, oldTool: old?.id ?? null, resources });
       cursor = end;
     }
     addEvent(cursor, 'tool_changed', { arm: arm.id, tool: tool.id, oldTool: old?.id ?? null, taskId: task.id });
@@ -281,7 +258,7 @@ export function buildSimulation(config = DEMO, options = {}) {
     if (arm.tool?.kind !== need) {
       const dock = arm.id === 'R1' ? 'T1' : 'T2';
       trialRoute(location, dock);
-      const tool = tools.find(t => t.kind === need && !t.heldBy && !t.reservedBy);
+      const tool = availableTool(dock,need);
       if (!tool) return { arm, tick: Infinity, changes: 1 };
       const duration = secondsToTicks((arm.tool ? config.tool.removeS : 0) + config.tool.installS + config.tool.verifyS, config);
       const resources = [`dock:${dock}`, `tool:${tool.id}`, `slot:${tool.slot}`];
@@ -319,6 +296,11 @@ export function buildSimulation(config = DEMO, options = {}) {
     const firstSpan = spans.filter(s => s.taskId === task.id && s.category !== 'wait').reduce((min, s) => Math.min(min, s.start), Infinity);
     addEvent(firstSpan, 'execution_started', { taskId: task.id, arm: arm.id, piece: piece.id });
     addAgenda(cursor, 'task_finish', { task, arm, piece });
+    if (dest==='FG') {
+      const park=config.armStart[arm.id];
+      const parked=scheduleRoute(arm,task,dest,park,cursor);
+      addAgenda(parked,'park_finish',{arm,park});
+    }
     return task;
   }
   function dispatch(now) {
@@ -349,6 +331,8 @@ export function buildSimulation(config = DEMO, options = {}) {
       machine.status = 'ready';
       piece.stage++;
       addEvent(clock, 'process_completed', { piece: piece.id, machine: machine.id, step: step.id, stage: piece.stage });
+    } else if (next.type==='park_finish') {
+      next.arm.location=next.park; next.arm.busy=false;
     } else if (next.type === 'task_finish') {
       const { task, arm, piece } = next;
       if (piece.location !== task.source || !piece.reserved) throw new Error('Stale transfer event');
@@ -377,7 +361,7 @@ export function buildSimulation(config = DEMO, options = {}) {
         if (task.dest === 'FG') piece.done = true;
       }
       piece.location = task.dest; piece.reserved = false;
-      arm.busy = false; arm.location = task.dest;
+      arm.busy = task.dest==='FG'; arm.location = task.dest;
       addEvent(clock, 'placed', { taskId: task.id, arm: arm.id, piece: piece.id, dest: task.dest, done: piece.done });
       addEvent(clock, 'task_completed', { taskId: task.id, arm: arm.id, piece: piece.id });
     }
@@ -386,13 +370,18 @@ export function buildSimulation(config = DEMO, options = {}) {
   events.sort((a, b) => a.tick - b.tick || a.type.localeCompare(b.type));
   spans.sort((a, b) => a.start - b.start || a.end - b.end);
   const completions = events.filter(e => e.type === 'process_completed');
-  const result = { config, options, pieces, machines, arms, tools, stock, tasks, spans, events,
+  const parkYaw=Object.fromEntries(Object.entries(config.armStart).map(([id,park])=>{
+    const path=layout.docks.find(d=>d.id===park).path, a=path.at(-2),b=path.at(-1);
+    return [id,-Math.atan2(b[1]-a[1],b[0]-a[0])];
+  }));
+  const completedAtMinutes=ticksToSeconds(events.filter(e=>e.type==='placed' && e.done).at(-1)?.tick ?? lastTick,config)/60;
+  const result = { config, options, parkYaw, pieces, machines, arms, tools, stock, tasks, spans, events,
     reservations: Object.fromEntries(calendar.intervals), durationTicks: lastTick,
     stats: { piecesDone: pieces.filter(p => p.done).length, processCompletions: completions.length,
       netProcessMinutes: completions.reduce((sum, e) => sum + config.recipe.route.find(s => s.id === e.step).seconds.reduce((a, b) => a + b, 0) / 60, 0),
       dispatches, waits: spans.filter(s => s.category === 'wait').length,
-      completedAtMinutes: ticksToSeconds(lastTick, config) / 60,
-      lateByMinutes: options.dueMinutes == null ? null : Math.max(0, ticksToSeconds(lastTick, config) / 60 - options.dueMinutes) } };
+      completedAtMinutes,
+      lateByMinutes: options.dueMinutes == null ? null : Math.max(0, completedAtMinutes - options.dueMinutes) } };
   return result;
 }
 

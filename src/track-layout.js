@@ -68,11 +68,16 @@ export function makeTrackLayout(config = DEMO) {
   }
   for (const id of ['RAW', 'WIP', 'FG']) {
     const dock = pointFor(id, config);
-    docks.push({ id, zone: id, path: [near(hubs[id], dock, radius), dock] });
+    const [cx,cz] = hubs[id];
+    docks.push({ id, zone: id, storePosition:[config.stores[id].x,config.stores[id].z],
+      path:[[cx+radius,cz],dock], railEnd:[dock[0],dock[1]+.82] });
   }
   for (const id of ['T1', 'T2', 'I1', 'I2']) {
     const dock = pointFor(id, config);
-    docks.push({ id, zone: 'SERVICE', path: [near(hubs.SERVICE, dock, radius), dock] });
+    const start = near(hubs.SERVICE,dock,radius);
+    const distance = Math.hypot(dock[0]-start[0],dock[1]-start[1]);
+    docks.push({ id, zone:'SERVICE', path:[start,dock],
+      railEnd:dock.map((v,i)=>v+.82*(v-start[i])/distance) });
   }
   return {
     kind: 'synthetic_demo_track', version: config.version, railHeightM: config.railHeightM,
@@ -118,8 +123,11 @@ export function stationRailPath(layout, from, to, zone) {
   const spur = id => id === zone
     ? [layout.branches.find(item => item.id === zone).paths[0].at(-1)]
     : layout.docks.find(item => item.id === id).path;
-  const origin = spur(from), arrive = spur(to);
-  if (from !== zone && to !== zone) {
+  return connectSpurs(ring,spur(from),spur(to),from!==zone && to!==zone);
+}
+
+function connectSpurs(ring,origin,arrive,clockwise) {
+  if (clockwise) {
     let common = 0;
     while (common < origin.length && common < arrive.length &&
       Math.hypot(origin[common][0]-arrive[common][0], origin[common][1]-arrive[common][1]) < 1e-7) common++;
@@ -130,7 +138,7 @@ export function stationRailPath(layout, from, to, zone) {
   const start = angle(depart.at(-1)), end = angle(arrive[0]);
   const turn = 2*Math.PI;
   const positive = radians => (radians+turn)%turn;
-  const delta = from !== zone && to !== zone ? positive(end-start)
+  const delta = clockwise ? positive(end-start)
     : Math.atan2(Math.sin(end-start), Math.cos(end-start));
   const vertices = ring.path.slice(0,-1).map(p => {
     const a = angle(p)-start;
@@ -138,4 +146,17 @@ export function stationRailPath(layout, from, to, zone) {
   }).filter(v => v.distance > 1e-7 && v.distance < Math.abs(delta)-1e-7)
     .sort((a,b) => a.distance-b.distance);
   return [...depart, ...vertices.map(v => v.p), ...arrive];
+}
+
+// The logistics branch has a common trunk and a separate access rail to each store.
+export function logisticsPath(layout, from, to) {
+  const branch = layout.branches.find(b=>b.id==='LOGISTICS');
+  const toTrunk = id => {
+    if (id==='LOGISTICS') return [branch.paths[0].at(-1)];
+    const spur = layout.docks.find(d=>d.id===id);
+    const access = branch.paths[['RAW','WIP','FG'].indexOf(id)+1];
+    const ring = layout.rings.find(r=>r.id===id);
+    return [...connectSpurs(ring,spur.path,[access.at(-1)],false),access[0]];
+  };
+  return [...toTrunk(from),...toTrunk(to).reverse().slice(1)];
 }

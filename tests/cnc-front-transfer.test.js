@@ -4,7 +4,8 @@ import test from 'node:test';
 import { Box3, Raycaster, Triangle, Vector3 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DEMO } from '../src/config.js';
-import { frontTransferPose, poseFrontRobot, gripOffset, frontFixture } from '../src/cnc-front-transfer.js';
+import { poseFrontRobot, gripOffset, frontFixture } from '../src/cnc-front-transfer.js';
+import {armPose} from '../src/robot-motion.js';
 import { buildSimulation } from '../src/sim.js';
 import { stateAt } from '../src/playback.js';
 import { machiningFrame, wheelOnStock, edmDischarging, edmSurfaceProgress, wireSlotLength } from '../src/machining-animation.js';
@@ -60,20 +61,18 @@ for (const [frontStation, station] of frontStations) test(frontStation+' clears 
   }
 
   const sim=buildSimulation();
-  const pieceId=sim.spans.find(p=>p.station===frontStation && p.mode==='place').piece;
-  const transfer=sim.spans.filter(p=>p.station===frontStation && p.piece===pieceId && p.category==='action');
-  for (const mode of ['place','pick']) {
-    const actions=transfer.filter(s=>s.mode===mode);
-    const start=actions[0].start, end=actions.at(-1).end;
-    const ticks=Array.from({length:end-start+101},(_,i)=>start-50+i);
+  const transfers=sim.spans.filter(p=>p.station===frontStation && p.category==='action');
+  for (const taskId of new Set(transfers.map(p=>p.taskId))) {
+    const actions=transfers.filter(s=>s.taskId===taskId);
+    const {piece:pieceId,mode,start}=actions[0], end=actions.at(-1).end;
     let nearFixture=false, crossedDoor=false;
-    for (const tick of ticks) {
+    for (let tick=start;tick<end;tick++) {
       const state=stateAt(sim,tick), arm=state.arms[actions[0].arm], piece=state.pieces[pieceId];
       assert.notEqual(arm.frontRailYaw,null);
-      const pose=arm.frontPose ?? frontTransferPose(station,null,piece.carriedBy?'place':'pick',0);
+      const pose=armPose(arm,piece.carriedBy===arm.id);
       const open=state.machines[frontStation].doorFraction ?? 0;
       group.position.set(arm.position[0]-station.x,0,arm.position[1]-station.z);
-      poseFrontRobot(robot,arm.frontRailYaw,pose);
+      poseFrontRobot(robot,arm.railYaw,pose);
       group.updateMatrixWorld(true);
       const tcp=robot.wrist.localToWorld(new Vector3(gripOffset.forward,gripOffset.height,0));
       if (arm.frontPose) {
