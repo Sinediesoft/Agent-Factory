@@ -7,7 +7,7 @@ import { DEMO } from '../src/config.js';
 import { frontTransferPose, poseFrontRobot, gripOffset, frontFixture } from '../src/cnc-front-transfer.js';
 import { buildSimulation } from '../src/sim.js';
 import { stateAt } from '../src/playback.js';
-import { machiningFrame, wireSlotLength } from '../src/machining-animation.js';
+import { machiningFrame, edmDischarging, edmSurfaceProgress, wireSlotLength } from '../src/machining-animation.js';
 import { makeTrackLayout } from '../src/track-layout.js';
 
 async function load(name) {
@@ -30,18 +30,19 @@ function collider(mesh, sliding) {
 
 const frontStations = Object.entries(DEMO.stations).filter(([,station]) => frontFixture(station));
 for (const [frontStation, station] of frontStations) test(frontStation+' clears the enclosure during front loading and unloading', async () => {
-  const wire = station.type === 'WIRE';
+  const tankGate = station.type !== 'CNC';
+  const modelName = station.type.toLowerCase();
   const {height:fixtureHeight, depth} = frontFixture(station);
-  const [shell,group,cnc,track] = await Promise.all([wire?'wire':'cnc-l01-shell','robot','cnc','track'].map(load));
+  const [shell,group,cnc,track] = await Promise.all([tankGate?modelName:'cnc-l01-shell','robot','cnc','track'].map(load));
   const meshes=group.getObjectsByProperty('isMesh',true);
   const robot={group,shoulder:group.getObjectByName('Shoulder'),elbow:group.getObjectByName('Elbow'),
     wrist:group.getObjectByName('Wrist'),jaws:meshes.filter(m=>/^(rough|protect)-jaw/.test(m.name))};
-  const door=shell.getObjectByName(wire?'TankGate':'SlidingDoor');
-  assert.ok(door && (!wire || shell.getObjectByName('wire-depth-enclosure')));
-  if (wire) assert.equal(door.userData.stroke,.94);
+  const door=shell.getObjectByName(tankGate?'TankGate':'SlidingDoor');
+  assert.ok(door && (!tankGate || shell.getObjectByName(modelName+'-depth-enclosure')));
+  if (tankGate) assert.equal(door.userData.stroke,.94);
   const solids=shell.getObjectsByProperty('isMesh',true).map(m=>collider(m,m.parent===door));
   for (const m of cnc.getObjectsByProperty('isMesh',true)) {
-    if (!wire && /^(work-fixture|cross-slide|table-t-slot|spindle-|cutting-tool)/.test(m.name)) solids.push(collider(m,false));
+    if (!tankGate && /^(work-fixture|cross-slide|table-t-slot|spindle-|cutting-tool)/.test(m.name)) solids.push(collider(m,false));
   }
   const path=makeTrackLayout().docks.find(d=>d.id===frontStation).path;
   const [endX,endZ]=path.at(-1);
@@ -93,7 +94,7 @@ for (const [frontStation, station] of frontStations) test(frontStation+' clears 
           // Conservatively test the moving part's entire AABB against the actual CAD triangles.
           const check=box.clone().expandByScalar(-.00005); // allow contact with the fixture at rest
           if (solid.sliding) {
-            const axis=wire?'y':'x', stroke=wire?door.userData.stroke:1.004;
+            const axis=tankGate?'y':'x', stroke=tankGate?door.userData.stroke:1.004;
             check.min[axis]+=open*stroke; check.max[axis]+=open*stroke;
           }
           if (!check.intersectsBox(solid.bounds)) continue;
@@ -141,4 +142,50 @@ test('WIRE-01 advances the electrode through a clamped blank, parks it, and rele
     previousLength=length;
   }
   assert.ok(contact && previousLength>.5);
+});
+
+
+test('EDM-01 keeps a discharge gap, retracts the ram and unloads all six parts', async () => {
+  const sim=buildSimulation(), id='EDM-01', model=await load('edm');
+  const processes=sim.spans.filter(s=>s.station===id && s.category==='process');
+  assert.equal(processes.length,6);
+  for (const span of processes) {
+    const cutting=stateAt(sim,span.start), done=stateAt(sim,span.end);
+    assert.equal(cutting.machines[id].doorOpen,false);
+    assert.equal(cutting.pieces[span.piece].location,id);
+    assert.equal(cutting.machines[id].status,'processing');
+    assert.equal(done.machines[id].status,'ready');
+    assert.equal(done.pieces[span.piece].stage,5);
+    const pick=sim.events.find(e=>e.type==='picked' && e.source===id && e.piece===span.piece);
+    assert.ok(pick.tick>span.end);
+    assert.equal(stateAt(sim,pick.tick).pieces[span.piece].carriedBy,pick.arm);
+  }
+
+  const bounds=name=>new Box3().setFromObject(model.getObjectByName(name),true);
+  const fixture=frontFixture(DEMO.stations[id]);
+  const stock=new Box3().setFromCenterAndSize(new Vector3(0,fixture.height,fixture.depth),new Vector3(.50,.18,.75));
+  const tip=bounds('electrode'), holder=bounds('electrode-holder'), ram=bounds('z-ram');
+  const sleeves=model.getObjectsByProperty('isMesh',true).filter(m=>m.name.startsWith('ram-sleeve'))
+    .map(m=>new Box3().setFromObject(m,true));
+  assert.equal(sleeves.length,4);
+  assert.ok(Math.abs(bounds('fixture-block').max.y-stock.min.y)<.0001);
+  assert.ok(Math.abs(tip.getCenter(new Vector3()).z-fixture.depth)<.0001);
+  const span=processes[0];
+  let activeTicks=0;
+  for(let t=span.start;t<=span.end;t++){
+    const frame=machiningFrame(t,span,'EDM','processing'), [x,y,z]=frame.offset;
+    assert.equal(x,0);assert.equal(z,0);
+    const gap=tip.min.y+y-stock.max.y;
+    assert.ok(gap>0 && holder.min.y+y>stock.max.y);
+    const movingRam=ram.clone().translate(new Vector3(x,y,z));
+    assert.ok(sleeves.every(s=>!s.intersectsBox(movingRam)));
+    if(frame.active && edmDischarging(frame.progress)){
+      assert.ok(gap>.0049 && gap<.0081);
+      activeTicks++;
+    }
+    if(t===span.start || t===span.end) assert.ok(gap>.50);
+  }
+  assert.ok(activeTicks>(span.end-span.start)*.70);
+  assert.equal(edmSurfaceProgress(0),0);
+  assert.equal(edmSurfaceProgress(1),1);
 });

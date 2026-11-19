@@ -24,6 +24,8 @@ CNC 工作區的四台機台共用以 FANUC ROBODRILL α-D21MiB5 Plus 為外觀�
 
 WIRE-01 使用本機 ComfyUI 生成的 ROBOCUT 風格外殼與可升降的黃色槽門。在場景上方選「WIRE-01」後點「上下料試播」，即可觀看正面進料、關門線割與完工下料。[生成工作流程](tools/comfyui/wire/README.md) · [完整試播](docs/visuals/wire-01-full-cycle.mp4)
 
+EDM-01 使用本機 ComfyUI 生成的雙柱式成形放電機外殼。在場景上方選「EDM-01」後點「上下料試播」，可觀看 R2 從正門上下料，以及槽門關閉後銅電極下降、放電、退回的完整循環。[生成工作流程](tools/comfyui/edm/README.md) · [26 秒試播](docs/visuals/edm-01-full-cycle.mp4)
+
 ## 已實作
 
 - 固定六道順序：`L01/R01 → GRIND → WIRE → R02 → EDM → L02 → FG`，六件逐件流轉；粗加工 4+8 分鐘，每件淨加工 47 分鐘。
@@ -46,7 +48,7 @@ WIRE-01 使用本機 ComfyUI 生成的 ROBOCUT 風格外殼與可升降的黃色
 
 Blender 可編輯場景、GLB 與重建方法見 [docs/BLENDER_MODELS.md](docs/BLENDER_MODELS.md)。本次沒有可用的 Blender MCP，因此以 Blender `bpy` 產出；模型是示範概念，並非原廠 CAD。
 
-預設六件結果：36 筆必要加工完成、6 筆 FG 放置確認，RAW / WIP / FG 從 `6/0/0` 到 `0/0/6`，淨加工工作量 282 機台分鐘，模擬完工時間約 207.77 分鐘。這是確定性貪婪排程的結果，不是全域最優解。
+預設六件工件均完成六道工序，共 36 筆加工完成、6 筆成品入庫確認。RAW / WIP / FG 從 `6/0/0` 變為 `0/0/6`。淨加工工作量為 282 機台分鐘，依目前的軌道與貪婪排程，模擬完工時間約 202.54 分鐘。
 
 ## 明確尚未完成
 

@@ -6,6 +6,22 @@ const wireTravel = progress => (wireEntryTravel + wireSlotDepth) *
 export const wireSlotLength = progress => Math.min(wireSlotDepth,
   Math.max(0, wireTravel(Math.min(progress,.86)) - wireEntryTravel));
 
+// The nominal gap is exaggerated for the scene. Motion stays on the ram's vertical axis.
+const ramFeedFraction = .12;
+export function edmDischarging(progress) {
+  return progress >= ramFeedFraction && progress < 1-ramFeedFraction;
+}
+
+export function edmSurfaceProgress(progress) {
+  return Math.max(0,Math.min(1,(progress-ramFeedFraction)/(1-2*ramFeedFraction)));
+}
+
+function ramOffset(progress, phase) {
+  const feed = Math.min(1, progress/ramFeedFraction, (1-progress)/ramFeedFraction);
+  const lift = edmDischarging(progress) ? .003 * Math.pow(Math.sin(phase*2),2) : 0;
+  return -.530*feed+lift;
+}
+
 // All motion is derived from the simulation tick, so pause and seek reproduce the same frame.
 export function machiningFrame(tick, span, type, status) {
   if (!span || status !== 'processing' || tick < span.start || tick >= span.end) {
@@ -19,9 +35,9 @@ export function machiningFrame(tick, span, type, status) {
     CNC: [.14 * wave, -.095 - .045 * Math.sin(phase * 2), .04 * cross],
     GRIND: [.34 * wave, -.035, .08 * cross],
     WIRE: [0, 0, wireTravel(progress)],
-    EDM: [.025 * wave, -.085 - .035 * Math.sin(phase * 2), .025 * cross],
+    EDM: [0,ramOffset(progress,phase),0],
   }[type] || [0, 0, 0];
-  return { active: true, progress, offset: type === 'WIRE' ? offset : offset.map(value => value * ease),
+  return { active: true, progress, offset: (type === 'WIRE' || type === 'EDM') ? offset : offset.map(value => value * ease),
     phase, pulse: .55 + .45 * Math.sin(phase * 5) };
 }
 

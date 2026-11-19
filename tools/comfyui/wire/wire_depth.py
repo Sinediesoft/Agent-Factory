@@ -1,4 +1,4 @@
-"""ComfyUI node for the four orthographic WIRE-01 reference cameras (metres, glTF Y-up)."""
+"""ComfyUI node for the calibrated WIRE-01 and EDM-01 reference cameras (metres, glTF Y-up)."""
 from pathlib import Path
 import numpy as np
 import onnxruntime as ort
@@ -39,7 +39,7 @@ def project(points, azimuth, shape):
     return (pixels_y.clip(0, height-1), pixels_x.clip(0, width-1)), np.einsum("ij,j->i", points, toward)
 
 
-def surface_from_views(images, masks, session):
+def surface_from_views(images, masks, session, machine):
     origin = np.array([-2.12, -.12, -1.84])
     grid = np.indices((123, 97, 107)).reshape(3, -1).T * PITCH_METRES + origin
     points = grid - [0, 1.56, 0]
@@ -70,9 +70,14 @@ def surface_from_views(images, masks, session):
         limit = np.maximum(estimated, envelope[v, u] - .045)
         inside &= distance <= limit
 
-    # Preserve the front opening, EDM tank, carriage approach and wire guide envelope.
+    # Reserve the machine-specific machining bay and front transfer corridor.
     gx, gy, gz = grid.T
-    chamber = (gx > -1.59) & (gx < .91) & (gy > .58) & (gy < 2.74) & (gz > -.69)
+    if machine == 'edm':
+        chamber = (abs(gx) < 1.12) & (gy > .66) & (gy < 2.62) & (gz > -.78)
+        ram_bore = (abs(gx) < .26) & (abs(gz-.70) < .26) & (gy > 2.48)
+        chamber |= ram_bore
+    else:
+        chamber = (gx > -1.59) & (gx < .91) & (gy > .58) & (gy < 2.74) & (gz > -.69)
     envelope = (abs(gx) <= 1.96) & (abs(gz) <= 1.59) & (gy >= .19) & (gy <= 3.15)
     inside &= envelope & ~chamber
     field = ndimage.gaussian_filter(inside.reshape(123, 97, 107).astype('f4'), .85)
@@ -85,6 +90,8 @@ def surface_from_views(images, masks, session):
 
 
 class WireDepthShell:
+    machine = 'wire'
+
     @classmethod
     def INPUT_TYPES(cls):
         inputs = {}
@@ -104,9 +111,13 @@ class WireDepthShell:
         session = ort.InferenceSession(str(model), sess_options=opts, providers=['CPUExecutionProvider'])
         images = [inputs[name][0].cpu().numpy() for name in VIEWS]
         masks = [inputs[name+'_mask'][0].cpu().numpy() < .5 for name in VIEWS]
-        mesh = surface_from_views(images, masks, session)
+        mesh = surface_from_views(images, masks, session, self.machine)
         return (MESH(torch.from_numpy(mesh.vertices.astype('f4'))[None],
                      torch.from_numpy(mesh.faces.astype('int64'))[None]),)
 
 
-NODE_CLASS_MAPPINGS = {'WireDepthShell': WireDepthShell}
+class EdmDepthShell(WireDepthShell):
+    machine = 'edm'
+
+
+NODE_CLASS_MAPPINGS = {'WireDepthShell': WireDepthShell, 'EdmDepthShell': EdmDepthShell}
