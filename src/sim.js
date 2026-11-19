@@ -1,6 +1,6 @@
 import { DEMO, secondsToTicks, ticksToSeconds, pointFor, branchFor, stationZone } from './config.js';
 
-import { makeTrackLayout, cncRailPath } from './track-layout.js';
+import { makeTrackLayout, stationRailPath } from './track-layout.js';
 
 const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const hub = { CNC: [-14, -10], GRIND: [0, -13], WIRE: [14, -7], EDM: [14, 7], LOGISTICS: [0, 13], SERVICE: [-15, 7] };
@@ -90,12 +90,12 @@ export function routePhases(from, to, config = DEMO, layout = makeTrackLayout(co
     label, from: fromPoint, to: toPoint, resources, category,
     ticks: secondsToTicks(distance(fromPoint, toPoint) / speed + extraSeconds, config),
   });
-  const cncEntry = layout.branches.find(branch => branch.id === 'CNC').paths[0].at(-1);
-  const junction = zone => zone === 'CNC' ? cncEntry : hub[zone];
-  function cncTravel(start, end) {
-    const path = cncRailPath(layout, start, end);
+  const frontZone = zone => zone === 'CNC' || zone === 'WIRE';
+  const junction = zone => frontZone(zone) ? layout.branches.find(branch => branch.id === zone).paths[0].at(-1) : hub[zone];
+  function frontTravel(start, end, zone) {
+    const path = stationRailPath(layout, start, end, zone);
     const length = path.slice(1).reduce((sum,p,i) => sum + distance(path[i],p), 0);
-    const ring = layout.rings.find(r => r.id === 'CNC');
+    const ring = layout.rings.find(r => r.id === zone);
     const onRing = p => Math.abs(distance(p,ring.center)-ring.radiusM)<1e-6;
     const occupied = new Set();
     for (let i=1; i<path.length; i++) {
@@ -103,17 +103,17 @@ export function routePhases(from, to, config = DEMO, layout = makeTrackLayout(co
       if (!onRing(a) || !onRing(b)) continue;
       const angle=Math.atan2((a[1]+b[1])/2-ring.center[1], (a[0]+b[0])/2-ring.center[0]);
       const quadrant=Math.floor(((angle+2*Math.PI)%(2*Math.PI))/(Math.PI/2));
-      occupied.add(`ring:CNC:${quadrant}`);
+      occupied.add(`ring:${zone}:${quadrant}`);
     }
     // Only one carriage can pass through the common turnout and feeder at a time.
-    const resources = [...occupied, 'feeder:CNC'];
-    for (const id of [start,end]) if (id !== 'CNC') resources.push(`dock:${id}`);
+    const resources = [...occupied, `feeder:${zone}`];
+    for (const id of [start,end]) if (id !== zone) resources.push(`dock:${id}`);
     return {label: `${start} → ${end} 軌道移動`, category:'travel', resources,
       path, from:path[0], to:path.at(-1), ticks:secondsToTicks(length/speed,config),
-      cncFrom: start === 'CNC' ? null : start, cncTo: end === 'CNC' ? null : end};
+      frontFrom: start === zone ? null : start, frontTo: end === zone ? null : end};
   }
   if (a === b) {
-    if (a === 'CNC') return [cncTravel(from, to)];
+    if (frontZone(a)) return [frontTravel(from, to, a)];
     const resources = a === 'LOGISTICS' ? ['branch:LOGISTICS', ringResource(from, config), ringResource(to, config)]
       : (() => {
         const slots = areaSlots[az];
@@ -129,7 +129,7 @@ export function routePhases(from, to, config = DEMO, layout = makeTrackLayout(co
   }
   const phases = [];
   const turn = config.turntable;
-  phases.push(a === 'CNC' ? cncTravel(from, 'CNC') : travel(`${az} 區內環 → 出口`, p0, hub[a], [ringResource(from, config)]));
+  phases.push(frontZone(a) ? frontTravel(from, a, a) : travel(`${az} 區內環 → 出口`, p0, hub[a], [ringResource(from, config)]));
   phases.push(travel(`${a} 支軌出區`, junction(a), config.branchPoints[a], [`branch:${a}`], turn.enterS + turn.settleS, 'branch'));
   phases.push({ label: `${a} 轉盤定位與清空`, from: config.branchPoints[a], to: config.branchPoints[a],
     resources: [`branch:${a}`, `turntable:${a}`], category: 'turntable',
@@ -148,7 +148,7 @@ export function routePhases(from, to, config = DEMO, layout = makeTrackLayout(co
     ticks: secondsToTicks(turn.enterS + turn.settleS + turn.rotateS + turn.confirmS, config) });
   phases.push(travel(`${b} 支軌進區並清空`, config.branchPoints[b], junction(b),
     [`branch:${b}`], turn.clearS, 'branch'));
-  phases.push(b === 'CNC' ? cncTravel('CNC', to) : travel(`${bz} 區內環 → 停靠`, hub[b], p1, [ringResource(to, config)]));
+  phases.push(frontZone(b) ? frontTravel(b, to, b) : travel(`${bz} 區內環 → 停靠`, hub[b], p1, [ringResource(to, config)]));
   return phases;
 }
 

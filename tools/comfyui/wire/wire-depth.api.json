@@ -1,0 +1,73 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "wire-front.png"
+    }
+  },
+  "2": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "wire-left.png"
+    }
+  },
+  "3": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "wire-back.png"
+    }
+  },
+  "4": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "wire-right.png"
+    }
+  },
+  "5": {
+    "class_type": "WireDepthShell",
+    "inputs": {
+      "front": [
+        "1",
+        0
+      ],
+      "front_mask": [
+        "1",
+        1
+      ],
+      "left": [
+        "2",
+        0
+      ],
+      "left_mask": [
+        "2",
+        1
+      ],
+      "back": [
+        "3",
+        0
+      ],
+      "back_mask": [
+        "3",
+        1
+      ],
+      "right": [
+        "4",
+        0
+      ],
+      "right_mask": [
+        "4",
+        1
+      ]
+    }
+  },
+  "6": {
+    "class_type": "SaveGLB",
+    "inputs": {
+      "mesh": [
+        "5",
+        0
+      ],
+      "filename_prefix": "mesh/wire-depth"
+    }
+  }
+}

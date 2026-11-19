@@ -1,3 +1,11 @@
+// The wire enters at the rear edge of the 0.75 m blank and retraces the slit to park.
+const wireEntryTravel = .67 - .75/2 - (-.20);
+const wireSlotDepth = .58;
+const wireTravel = progress => (wireEntryTravel + wireSlotDepth) *
+  Math.max(0, Math.min(1, progress/.86, (1-progress)/.14));
+export const wireSlotLength = progress => Math.min(wireSlotDepth,
+  Math.max(0, wireTravel(Math.min(progress,.86)) - wireEntryTravel));
+
 // All motion is derived from the simulation tick, so pause and seek reproduce the same frame.
 export function machiningFrame(tick, span, type, status) {
   if (!span || status !== 'processing' || tick < span.start || tick >= span.end) {
@@ -10,10 +18,10 @@ export function machiningFrame(tick, span, type, status) {
   const offset = {
     CNC: [.14 * wave, -.095 - .045 * Math.sin(phase * 2), .04 * cross],
     GRIND: [.34 * wave, -.035, .08 * cross],
-    WIRE: [.13 * wave, -.045, .10 * cross],
+    WIRE: [0, 0, wireTravel(progress)],
     EDM: [.025 * wave, -.085 - .035 * Math.sin(phase * 2), .025 * cross],
   }[type] || [0, 0, 0];
-  return { active: true, progress, offset: offset.map(value => value * ease),
+  return { active: true, progress, offset: type === 'WIRE' ? offset : offset.map(value => value * ease),
     phase, pulse: .55 + .45 * Math.sin(phase * 5) };
 }
 

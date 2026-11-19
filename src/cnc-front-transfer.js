@@ -2,23 +2,30 @@
 export const frontStation = 'CNC-L01';
 export const gripOffset = {forward: 1.155, height: -.165};
 export const fixtureHeight = 1.205;
-const homeReach = 1.78, homeHeight = 1.70, approachHeight = fixtureHeight + .027;
+const fixtures = {CNC:{height:fixtureHeight, depth:.87}, WIRE:{height:1.35, depth:.67}};
+export const frontFixture = station => fixtures[station?.type];
+const homeReach = 1.78, homeHeight = 1.70;
 const lerp = (a,b,f) => a + (b-a)*f;
 const smooth = f => f*f*(3-2*f);
 
 export function frontTransferPose(station, action, mode, fraction) {
   const f = smooth(fraction);
-  const full = station.dock[1] - (station.z + .87);
+  const {height:fixtureHeight, depth} = frontFixture(station);
+  const approachHeight = fixtureHeight + .027;
+  const full = station.dock[1] - (station.z + depth);
   let reach = homeReach, height = homeHeight, jaw = mode === 'place' ? 0 : 1;
   let onFixture = mode === 'pick', door = 0;
   switch (action) {
+    case '開護罩':
     case '開門': door = f; break;
+    case '鬆開治具':
     case '治具鬆開': door = 1; break;
     case '手臂伸入':
       door = 1; reach = lerp(homeReach,full,smooth(Math.max(0,(fraction-.25)/.75)));
       height = lerp(homeHeight,mode === 'place' ? approachHeight : fixtureHeight,smooth(Math.min(1,fraction/.25)));
       break;
     case '精定位': door = 1; reach = full; height = approachHeight; break;
+    case '放妥工件':
     case '放置工件':
       door = 1; reach = full; height = lerp(approachHeight,fixtureHeight,f); break;
     case '夾爪張開':
@@ -34,10 +41,12 @@ export function frontTransferPose(station, action, mode, fraction) {
       height = lerp(mode === 'place' ? fixtureHeight : approachHeight,homeHeight,
         smooth(Math.max(0,(fraction-.45)/.55)));
       onFixture = mode === 'place'; jaw = onFixture ? 1 : 0; break;
+    case '夾緊治具':
     case '治具夾緊': door = 1; onFixture = true; jaw = 1; break;
+    case '關護罩':
     case '關門':
     case '原路倒退退出':
-      door = action === '關門' ? 1-f : 0; onFixture = mode === 'place'; jaw = onFixture ? 1 : 0; break;
+      door = action === '原路倒退退出' ? 0 : 1-f; onFixture = mode === 'place'; jaw = onFixture ? 1 : 0; break;
   }
   return {reach,height,jaw,door,onFixture};
 }
