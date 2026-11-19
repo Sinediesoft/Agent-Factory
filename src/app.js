@@ -21,6 +21,7 @@ const processSpans=Object.fromEntries(Object.keys(DEMO.stations).map(id=>[id,
 const processSpanAt=(id,tick)=>processSpans[id]?.find(span=>span.start<=tick&&tick<span.end);
 const processCycleAt=(id,tick)=>machiningCycle(processSpans[id]||[],tick);
 let demoStopTick=null;
+let trialMachiningWindow = null;
 const format = tick => {
   const seconds = Math.floor(ticksToSeconds(tick));
   const hours = Math.floor(seconds / 3600), minutes = Math.floor(seconds % 3600 / 60);
@@ -61,6 +62,7 @@ controls.update();
 const overviewView={position:[25,30,29],target:[-1,0,0]};
 let monitorMode=false;
 let shellTrialView=false;
+let trialPieceId=null;
 let monitorView='inside';
 const monitorButton=$('monitor-mode-btn'),monitorInsideModeButton=$('monitor-inside-mode-btn'),monitorControls=$('monitor-controls');
 const monitorZoneSelect=$('monitor-zone'),monitorTargetSelect=$('monitor-target');
@@ -162,8 +164,8 @@ for(const button of document.querySelectorAll('.scene-focus button[data-focus]')
   setFocusButton(button);resize();
 });
 function openMonitor(view){
+  if(shellTrialView || view!==monitorView)demoStopTick=null;
   shellTrialView=false;
-  if(view!==monitorView)demoStopTick=null;
   monitorView=view;
   if(view==='inside'&&!monitorAreaList.find(area=>area.id===monitorZoneSelect.value).targets.some(id=>DEMO.stations[id])){
     monitorZoneSelect.value=monitorAreaList.find(area=>area.targets.some(id=>DEMO.stations[id])).id;
@@ -255,7 +257,7 @@ function line(points,color,width=0.12,y=DEMO.railHeightM) {
 line(trackLayout.main.path,0x48aff0,.24);
 for(const ring of trackLayout.rings)line(ring.path,0x9585df,.08);
 for(const branch of trackLayout.branches)for(const path of branch.paths)line(path,0xe5b767,.12);
-for(const dock of trackLayout.docks)line(dock.railEnd ? [...dock.path,dock.railEnd] : dock.path,0x60a9a4,.08);
+for(const dock of trackLayout.docks)line(dock.railEnd ? [...dock.path.slice(dock.railStartIndex),dock.railEnd] : dock.path,0x60a9a4,.08);
 for(const branch of DEMO.branchOrder) {
   const turn=new THREE.Mesh(new THREE.CylinderGeometry(DEMO.turntable.radiusM,DEMO.turntable.radiusM,.2,32),new THREE.MeshStandardMaterial({color:0x5b7390,metalness:.6,roughness:.35}));
   turn.position.set(DEMO.branchPoints[branch][0],DEMO.railHeightM-.12,DEMO.branchPoints[branch][1]);fallbackTrack.add(turn);
@@ -310,9 +312,15 @@ for(const [id,color] of [['R1',0x60d4fa],['R2',0xf8bd70]]) {
 }
 const gltfLoader=new GLTFLoader();
 const loadModel=url=>new Promise((resolve,reject)=>gltfLoader.load(url,resolve,undefined,reject));
-const shellStationId = frontStation;
-async function installCadShell(group) {
-  const {scene: shell} = await loadModel('/models/cnc-l01-shell.glb');
+let shellStationId = frontStation;
+const trialPicker = $('cnc-trial-station');
+for (const [id, station] of Object.entries(DEMO.stations)) {
+  if (station.type === 'CNC') trialPicker.add(new Option(id, id));
+}
+trialPicker.value = shellStationId;
+
+function installCadShell(group, template, machine) {
+  const shell = template.clone(true);
   shell.name = 'CadShell';
   shell.traverse(part => {
     if (!part.isMesh) return;
@@ -328,14 +336,12 @@ async function installCadShell(group) {
       if (fixed.test(part.name)) part.removeFromParent();
     }
   } else {
-    installRobodrillExterior(group, shell);
+    installRobodrillExterior(group, shell, machine);
   }
   group.add(shell);
-  applyMonitorCutaway();
-  $('cnc-shell-demo').disabled = false;
 }
 
-function installRobodrillExterior(group, shell) {
+function installRobodrillExterior(group, shell, machine) {
   const door = shell.getObjectByName('SlidingDoor');
   const doorPanel = shell.getObjectByName('DoorPanel');
   const lamps = {
@@ -350,7 +356,6 @@ function installRobodrillExterior(group, shell) {
   }
   // STEP paint can also be shared by the emergency stop and lettering.
   for (const mesh of Object.values(lenses)) mesh.material = mesh.material.clone();
-  const machine = machineMeshes[shellStationId];
   const panelSize = new THREE.Box3().setFromObject(doorPanel).getSize(new THREE.Vector3());
   machine.slidingDoor = door;
   machine.doorStroke = panelSize.x - .120;
@@ -367,6 +372,7 @@ function installRobodrillExterior(group, shell) {
 }
 
 $('cnc-shell-demo').addEventListener('click', () => {
+  shellStationId = trialPicker.value;
   const loading = sim.spans.find(s => s.station === shellStationId && s.mode === 'place');
   if (!loading) return;
   const unloading = sim.events.find(e => e.type === 'picked' && e.source === shellStationId &&
@@ -375,6 +381,7 @@ $('cnc-shell-demo').addEventListener('click', () => {
   const station = DEMO.stations[shellStationId];
   document.querySelector('[data-focus="all"]').click();
   shellTrialView = true;
+  trialPieceId = loading.piece;
   applyMonitorCutaway();
   controls.target.set(station.x + .05, 1.52, station.z + 1.95).multiplyScalar(modelScale);
   camera.position.copy(controls.target).add(new THREE.Vector3(-6.8, 2.9, 6.2).multiplyScalar(modelScale));
@@ -382,10 +389,13 @@ $('cnc-shell-demo').addEventListener('click', () => {
   setFocusButton($('cnc-shell-demo'));
   document.querySelector('.scene-overlay span:first-child').textContent =
     [shellStationId, machineMeshes[shellStationId].slidingDoor ? 'ROBODRILL' : 'CAD 外殼', loading.piece].join(' · ');
-  const arrival = sim.spans.find(span => span.taskId === loading.taskId && span.frontRail === 'enter');
+  const arrival = sim.spans.find(span => span.taskId === loading.taskId && span.cncTo === shellStationId);
   playback.seek(arrival ? Math.max(arrival.start, loading.start - 50) : loading.start);
-  playback.rate = 30;
-  $('speed-select').value = '30';
+  const cutting = processSpans[shellStationId].filter(span => span.piece === loading.piece);
+  const pickup = sim.spans.find(span => span.taskId === unloading.taskId && span.station === shellStationId && span.mode === 'pick');
+  trialMachiningWindow = {start:cutting[0].start, end:cutting.at(-1).end, pickup:pickup.start};
+  playback.rate = 2;
+  $('speed-select').value = '2';
   demoStopTick = unloading.tick;
   playback.play();
   updatePanel(stateAt(sim, playback.tick));
@@ -422,7 +432,7 @@ const turntableSpans=Object.fromEntries(DEMO.branchOrder.map(id=>[id,sim.spans
   .filter(span=>span.category==='turntable'&&span.resources.includes(`turntable:${id}`))
   .sort((a,b)=>a.start-b.start)]));
 Promise.all([...Object.values(modelFiles),'robot','track'].map(name=>loadModel(`/models/${name}.glb`).then(gltf=>[name,gltf.scene])))
-  .then(entries=>{
+  .then(async entries=>{
     const templates=Object.fromEntries(entries);
     const track=templates.track;
     track.traverse(node=>{if(node.isMesh){node.castShadow=true;node.receiveShadow=true;}});
@@ -444,10 +454,6 @@ Promise.all([...Object.values(modelFiles),'robot','track'].map(name=>loadModel(`
       machineMeshes[id]={group,doorL,doorR,closedL:doorL?.position.x,closedR:doorR?.position.x,
         lamps:{red:group.getObjectByName('StatusRed'),orange:yellowLamp,green:group.getObjectByName('StatusGreen')},
         lampPick:addLampPickTarget(group,id,lampCenter),machining:attachMachiningAnimation(group,m.type)};
-      if (id === shellStationId) installCadShell(group).catch(error => {
-        console.error('CNC-L01 shell load failed', error);
-        $('cnc-shell-demo').title = '試驗外殼載入失敗';
-      });
     }
     applyMonitorCutaway();
     for(const id of ['R1','R2']){
@@ -460,6 +466,17 @@ Promise.all([...Object.values(modelFiles),'robot','track'].map(name=>loadModel(`
         toolProtect:group.getObjectByName('ToolProtect'),
         jaws:group.getObjectsByProperty('isMesh',true).filter(mesh=>/^(rough|protect)-jaw/.test(mesh.name))};
       for (const jaw of armMeshes[id].jaws) jaw.userData.restZ=jaw.position.z;
+    }
+    try {
+      const {scene: shell} = await loadModel('/models/cnc-l01-shell.glb');
+      for (const [id, station] of Object.entries(DEMO.stations)) {
+        if (station.type === 'CNC') installCadShell(machineMeshes[id].group, shell, machineMeshes[id]);
+      }
+      applyMonitorCutaway();
+      $('cnc-shell-demo').disabled = false;
+    } catch (error) {
+      console.error('CNC shell load failed', error);
+      $('cnc-shell-demo').title = '試播外殼載入失敗';
     }
     document.querySelector('.scene-overlay span:first-child').textContent=monitorMode
       ?monitorOverlayText():'Blender 3D · 點機台狀態燈看機內 · 拖曳旋轉 · 滾輪縮放';
@@ -549,7 +566,7 @@ function updateScene(state){
     const target=DEMO.stations[arm.activeStation]||DEMO.stores[arm.activeStation];
     if (arm.frontRailYaw != null && obj.wrist) {
       const carrying=Object.values(state.pieces).some(p=>p.carriedBy===id);
-      const pose=arm.frontPose ?? frontTransferPose(DEMO.stations[frontStation],null,carrying?'place':'pick',0);
+      const pose=arm.frontPose ?? frontTransferPose(DEMO.stations[arm.frontStationId],null,carrying?'place':'pick',0);
       poseFrontRobot(obj,arm.frontRailYaw,pose);
     } else {
       if (obj.shoulder) {
@@ -607,7 +624,8 @@ function updateScene(state){
   }
   for(const [id,p] of Object.entries(state.pieces)){
     const mesh=workpieceMeshes[id];
-    mesh.visible=!monitorMode||monitorView!=='inside'||(p.location===monitorTargetSelect.value&&!p.carriedBy);
+    mesh.visible=(!shellTrialView || id===trialPieceId) &&
+      (!monitorMode||monitorView!=='inside'||(p.location===monitorTargetSelect.value&&!p.carriedBy));
     mesh.rotation.y=0;
     if(p.carriedBy){const obj=armMeshes[p.carriedBy];
       if(obj.wrist && state.arms[p.carriedBy].frontRailYaw != null){
@@ -620,7 +638,7 @@ function updateScene(state){
       const s=DEMO.stations[p.location];
       const fixture={CNC:[1.205,.87],GRIND:[1.145,.79],WIRE:[1.35,.67],EDM:[1.455,.7]}[s.type];
       mesh.position.set(s.x,fixture[0],s.z+fixture[1]);
-      if (p.location===frontStation) {
+      if (s.type==='CNC') {
         mesh.position.set(s.dock[0],fixtureHeight,s.z+.87);
         mesh.rotation.y=Math.PI/2;
       }
@@ -677,10 +695,10 @@ function updatePanel(state){
   $('run-status').textContent=playback.playing?'模擬回放中':state.tick===sim.durationTicks?'六件完成 · 排程限制通過':state.tick===0?'排程限制通過 · 等待回放':'已暫停 · 手動繼續';
   $('play-btn').textContent=playback.playing?'❚❚ 暫停':'▶ 繼續回放';
 }
-$('play-btn').addEventListener('click',()=>{demoStopTick=null;if(playback.playing)playback.pause();else {if(playback.tick>=sim.durationTicks)playback.seek(0);playback.play();}updatePanel(stateAt(sim,playback.tick));});
+$('play-btn').addEventListener('click',()=>{if(playback.playing)playback.pause();else {if(playback.tick>=sim.durationTicks)playback.seek(0);playback.play();}updatePanel(stateAt(sim,playback.tick));});
 $('reset-btn').addEventListener('click',()=>{demoStopTick=null;playback.pause();playback.seek(0);updatePanel(stateAt(sim,0));});
 $('seek').addEventListener('input',e=>{demoStopTick=null;playback.pause();playback.seek(Number(e.target.value));updatePanel(stateAt(sim,playback.tick));});
-$('speed-select').addEventListener('change',e=>{demoStopTick=null;playback.rate=Number(e.target.value);});
+$('speed-select').addEventListener('change',e=>{trialMachiningWindow=null;playback.rate=Number(e.target.value);});
 $('interpret-btn').addEventListener('click',async()=>{
   const btn=$('interpret-btn'),result=$('request-result');btn.disabled=true;result.textContent='正在呼叫本機 LLM 服務…';
   try{const response=await fetch('/api/interpret',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:$('request-text').value})});const body=await response.json();if(!response.ok)throw new Error(body.error||`HTTP ${response.status}`);result.replaceChildren();const title=document.createElement('strong');title.textContent='LLM 摘要 · 需確認後才排程';result.append(title);const detail=document.createElement('div');detail.textContent=`配方 ${body.recipeId||'未匹配'} · 數量 ${body.quantity??'未指定'} · 交期 ${body.dueMinutes??'未指定'} 分鐘 · ${body.notes||''}`;result.append(detail);}
@@ -688,5 +706,25 @@ $('interpret-btn').addEventListener('click',async()=>{
   finally{btn.disabled=false;}
 });
 let lastPanel=-Infinity;
-function frame(now){requestAnimationFrame(frame);playback.advance(now);if(demoStopTick!==null&&playback.tick>=demoStopTick){playback.seek(demoStopTick);playback.pause();demoStopTick=null;}const state=stateAt(sim,playback.tick);updateScene(state);if(!monitorMode)controls.update();updateLabels();if(now-lastPanel>110){updatePanel(state);lastPanel=now;}renderer.render(scene,camera);}
+function frame(now){
+  requestAnimationFrame(frame);
+  if (shellTrialView && demoStopTick !== null && trialMachiningWindow) {
+    const {start, end, pickup} = trialMachiningWindow;
+    const boundary = [start,end,pickup].find(tick => tick > playback.tick);
+    const rate = playback.tick < start || playback.tick >= pickup ? 2 : playback.tick < end ? 60 : 600;
+    playback.rate = rate;
+    $('speed-select').value = String(rate);
+    playback.advance(now);
+    if (boundary != null && playback.tick > boundary) playback.seek(boundary);
+  } else playback.advance(now);
+  if (demoStopTick!==null && playback.tick>=demoStopTick) {
+    playback.seek(demoStopTick); playback.pause(); demoStopTick=null;
+  }
+  const state=stateAt(sim,playback.tick);
+  updateScene(state);
+  if(!monitorMode)controls.update();
+  updateLabels();
+  if(now-lastPanel>110){updatePanel(state);lastPanel=now;}
+  renderer.render(scene,camera);
+}
 updatePanel(stateAt(sim,0));requestAnimationFrame(frame);

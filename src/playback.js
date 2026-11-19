@@ -1,6 +1,6 @@
 import { DEMO, pointFor } from './config.js';
 
-import { frontStation, frontTransferPose, railSample } from './cnc-front-transfer.js';
+import { frontTransferPose, railSample } from './cnc-front-transfer.js';
 
 export function stateAt(sim, tick) {
   const config = sim.config || DEMO;
@@ -54,9 +54,14 @@ export function stateAt(sim, tick) {
       if (span.path) {
         const sample = railSample(span.path,fraction);
         arm.position = sample.point;
-        const onFrontRail = span.frontRail === 'enter' || (span.frontRail === 'exit' && tick < span.end);
-        arm.frontRailYaw = onFrontRail ? sample.yaw + (span.frontRail === 'exit' ? Math.PI : 0) : null;
+        arm.frontStationId = span.cncTo ?? (tick < span.end ? span.cncFrom : null);
+        // Back out with the same chassis orientation the previous route parked in.
+        const [first, next] = span.path;
+        const startYaw = -Math.atan2(next[1]-first[1], next[0]-first[0]);
+        const reverse = span.cncFrom && Math.cos(startYaw - (arm.frontRailYaw ?? Math.PI/2)) < 0;
+        arm.frontRailYaw = arm.frontStationId ? sample.yaw + (reverse ? Math.PI : 0) : null;
       } else {
+        arm.frontStationId = null;
         arm.frontRailYaw = null;
         arm.position = [span.from[0]+(span.to[0]-span.from[0])*fraction,
                         span.from[1]+(span.to[1]-span.from[1])*fraction];
@@ -66,14 +71,15 @@ export function stateAt(sim, tick) {
       arm.status = span.category;
       arm.activeLabel = span.label;
       arm.activeStation = span.station || null;
-      if (span.station === frontStation && span.category === 'action') {
+      if (config.stations[span.station]?.type === 'CNC' && span.category === 'action') {
         const action = span.action ?? span.label.split(' · ').at(-1);
-        const pose = frontTransferPose(config.stations[frontStation],action,span.mode,(tick-span.start)/(span.end-span.start));
+        const pose = frontTransferPose(config.stations[span.station],action,span.mode,(tick-span.start)/(span.end-span.start));
+        arm.frontStationId = span.station;
         arm.frontPose = pose;
-        arm.frontRailYaw = Math.PI/2;
-        machines[frontStation].doorFraction = pose.door;
+        arm.frontRailYaw ??= Math.PI/2;
+        machines[span.station].doorFraction = pose.door;
         // The gripper hands off at the fixture; task confirmation follows once the carriage can leave.
-        piece[span.piece].location = pose.onFixture ? frontStation : null;
+        piece[span.piece].location = pose.onFixture ? span.station : null;
         piece[span.piece].carriedBy = pose.onFixture ? null : span.arm;
       }
     }
@@ -83,13 +89,16 @@ export function stateAt(sim, tick) {
 }
 
 export class PlaybackClock {
-  constructor(durationTicks) { this.durationTicks = durationTicks; this.tick = 0; this.playing = false; this.rate = 120; this.lastReal = null; }
+  constructor(durationTicks) { this.durationTicks = durationTicks; this.tick = 0; this.fractionalTick = 0; this.playing = false; this.rate = 120; this.lastReal = null; }
   play() { this.playing = true; this.lastReal = null; }
   pause() { this.playing = false; this.lastReal = null; }
-  seek(tick) { this.tick = Math.max(0, Math.min(this.durationTicks, Math.round(tick))); this.lastReal = null; }
+  seek(tick) { this.tick = Math.max(0, Math.min(this.durationTicks, Math.round(tick))); this.fractionalTick = this.tick; this.lastReal = null; }
   advance(realNow, quantumSeconds = 0.1) {
     if (!this.playing) return this.tick;
-    if (this.lastReal !== null) this.seek(this.tick + (realNow - this.lastReal) / 1000 * this.rate / quantumSeconds);
+    if (this.lastReal !== null) {
+      this.fractionalTick += (realNow - this.lastReal) / 1000 * this.rate / quantumSeconds;
+      this.tick = Math.min(this.durationTicks, Math.round(this.fractionalTick));
+    }
     this.lastReal = realNow;
     if (this.tick >= this.durationTicks) this.pause();
     return this.tick;

@@ -138,7 +138,7 @@ def make_track_network(layout):
         for path in branch['paths']:
             build_path(path, gauge, height, spacing, batches, 'branch')
     for dock in layout['docks']:
-        path = dock['path'] + ([dock['railEnd']] if 'railEnd' in dock else [])
+        path = dock['path'][dock.get('railStartIndex', 0):] + ([dock['railEnd']] if 'railEnd' in dock else [])
         build_path(path, gauge, height, spacing, batches, 'dock')
     for kind, (rails, sleepers, accents) in batches.items():
         rails.create(f'Track_{kind}_steel', steel, root)

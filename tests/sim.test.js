@@ -95,7 +95,7 @@ test('grinder unload is the first transport that requires PROTECT', () => {
 
 test('whole branch and route phase reservations cannot overlap', () => {
   const result = buildSimulation();
-  for (const resource of Object.keys(result.reservations).filter(k => k.startsWith('branch:') || k.startsWith('main:') || k.startsWith('turntable:'))) {
+  for (const resource of Object.keys(result.reservations)) {
     const rows = result.reservations[resource];
     for (let i = 1; i < rows.length; i++) assert.ok(rows[i].start >= rows[i - 1].end, resource);
   }
@@ -104,7 +104,16 @@ test('whole branch and route phase reservations cannot overlap', () => {
   assert.ok(phases.some(p => p.resources.includes('branch:WIRE')));
   assert.ok(phases.some(p => p.resources.includes('turntable:WIRE')));
   assert.equal(phases.filter(p => p.category === 'travel' && p.label.startsWith('主環')).length, 4);
-  assert.ok(Object.keys(result.reservations).filter(k => k.startsWith('ring:CNC:')).length >= 3);
+  for (const [id, station] of Object.entries(DEMO.stations)) {
+    if (station.type !== 'CNC') continue;
+    const arrival = routePhases('RAW', id).at(-1);
+    const departure = routePhases(id, 'RAW')[0];
+    for (const phase of [arrival, departure]) {
+      assert.ok(phase.resources.includes('dock:'+id) && phase.resources.includes('feeder:CNC'));
+      assert.ok(phase.resources.some(r => r.startsWith('ring:CNC:')));
+    }
+    assert.deepEqual([...arrival.path].reverse(), departure.path);
+  }
 });
 
 test('resource calendar keeps full reservation and rejects double booking', () => {
@@ -119,7 +128,10 @@ test('resource calendar keeps full reservation and rejects double booking', () =
 test('playback pause remains paused after seek and state matches final stock', () => {
   const result = buildSimulation();
   const clock = new PlaybackClock(result.durationTicks);
-  clock.play(); clock.advance(1000); clock.advance(2000);
+  clock.rate = 2;
+  clock.play();
+  for (let ms=1000; ms<=2000; ms+=10) clock.advance(ms);
+  assert.equal(clock.tick, 20);
   assert.ok(clock.tick > 0);
   clock.pause(); const pausedTick = clock.tick; clock.advance(3000);
   assert.equal(clock.tick, pausedTick);

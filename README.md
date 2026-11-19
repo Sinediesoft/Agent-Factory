@@ -20,7 +20,7 @@ npm run build  # 產生 dist/app.html 與 dist/index.html
 
 `npm run preview` 可檢查靜態建置成果。`/api/interpret` 是開發伺服器上的本機 API；純靜態預覽沒有 LLM 後端。
 
-此分支的 CNC-L01 已接入以 FANUC ROBODRILL α-D21MiB5 Plus 為外觀參考的 Onshape 模型，包含單扇滑門、斜紋視窗與右側操作面板。「CNC-L01 上下料試播」可回放首件工件從上料到完工取件的流程。[模型與重建方式](tools/onshape/README.md)
+CNC 工作區的四台機台共用以 FANUC ROBODRILL α-D21MiB5 Plus 為外觀參考的 Onshape 模型，包含單扇滑門、斜紋視窗與右側操作面板。在場景上方選擇 CNC 編號後按「上下料試播」，可觀看該台首件工件從正門上料、加工到完工下料。四台共用進區軌道，並各有對準門口的專用停靠支線。[模型與重建方式](tools/onshape/README.md) · [觀看 CNC-R01、R02、L02 完整試播](docs/visuals/cnc-area-front-cycles.mp4)
 
 ## 已實作
 

@@ -14,18 +14,20 @@ const circle = (center, radius, sides = 48) => Array.from({ length: sides + 1 },
   return [center[0] + radius * Math.cos(a), center[1] + radius * Math.sin(a)];
 });
 
-// A tangent turnout from the south side of the CNC ring feeds the front-loading spur.
-function frontSpur(dock, radius) {
+// Each side shares a feeder from the ring, then turns into a straight front dock.
+function frontSpur(dock, radius, cncDocks) {
   const [cx, cz] = hubs.CNC;
-  const leadZ = cz - radius;
-  const bend = 1.20;
-  const path = [[cx, leadZ]];
+  const leadZ = cz - radius, bend = 1.20;
+  const side = Math.sign(dock[0] - cx);
+  const switches = cncDocks.map(([x]) => (x - cx) * side)
+    .filter(d => d > 0 && d < (dock[0] - cx) * side).sort((a,b) => a-b);
+  const path = [[cx, leadZ], ...switches.map(d => [cx + side*(d-bend), leadZ])];
   for (let n = 0; n <= 12; n++) {
     const angle = n * Math.PI / 24;
-    path.push([dock[0] + bend - bend * Math.sin(angle), leadZ - bend + bend * Math.cos(angle)]);
+    path.push([dock[0] + side*bend*(Math.sin(angle)-1), leadZ + bend*(Math.cos(angle)-1)]);
   }
   path.push(dock);
-  return path;
+  return {path, railStartIndex: switches.length, railEnd: [dock[0], dock[1]-.82]};
 }
 
 export function makeTrackLayout(config = DEMO) {
@@ -49,11 +51,12 @@ export function makeTrackLayout(config = DEMO) {
   branches.push({ id: 'SERVICE', paths: [[config.branchPoints.SERVICE,
     near(hubs.SERVICE, config.branchPoints.SERVICE, radius)]] });
   const docks = [];
+  const cncDocks = Object.values(config.stations).filter(s => s.type === 'CNC').map(s => s.dock);
   for (const [id, machine] of Object.entries(config.stations)) {
     const dock = pointFor(id, config);
-    if (id === 'CNC-L01') {
+    if (machine.type === 'CNC') {
       // The carriage stops at its center. Leave rail under the front shoes beyond that point.
-      docks.push({id, zone:machine.zone, path:frontSpur(dock,radius), railEnd:[dock[0],dock[1]-.82]});
+      docks.push({id, zone:machine.zone, machinePosition:[machine.x,machine.z], ...frontSpur(dock,radius,cncDocks)});
     } else {
       docks.push({id, zone:machine.zone, path:[near(hubs[machine.zone],dock,radius),dock]});
     }
@@ -110,7 +113,14 @@ export function cncRailPath(layout, from, to) {
   const spur = id => id === 'CNC'
     ? [layout.branches.find(item => item.id === 'CNC').paths[0].at(-1)]
     : layout.docks.find(item => item.id === id).path;
-  const depart = [...spur(from)].reverse(), arrive = spur(to);
+  const origin = spur(from), arrive = spur(to);
+  if (from !== 'CNC' && to !== 'CNC') {
+    let common = 0;
+    while (common < origin.length && common < arrive.length &&
+      Math.hypot(origin[common][0]-arrive[common][0], origin[common][1]-arrive[common][1]) < 1e-7) common++;
+    if (common) return [...origin.slice(common-1).reverse(), ...arrive.slice(common)];
+  }
+  const depart = [...origin].reverse();
   const angle = p => Math.atan2(p[1] - ring.center[1], p[0] - ring.center[0]);
   const start = angle(depart.at(-1)), end = angle(arrive[0]);
   const turn = 2*Math.PI;

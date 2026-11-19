@@ -23,7 +23,7 @@ textarea{background:#fff;border-color:#b9cad7;color:#21384b}
 .route-list li{border-color:#c9d8e3;color:#526d82}
 .route-list li:before{background:#eaf5fb;border-color:#81b8d6;color:#1c6d98}
 .scene-focus{background:#fff}
-.scene-focus button{background:#f5f9fc;border-color:#cadbe7;color:#3b607b}
+.scene-focus select{font:inherit;font-size:11px;color:#294d65;background:#f5f9fc;border:1px solid #cadbe7;border-radius:5px;padding:4px 6px}.scene-focus button{background:#f5f9fc;border-color:#cadbe7;color:#3b607b}
 .scene-focus button.active{background:#dff1fa;border-color:#63b5da;color:#145b80}
 .scene-wrap{background:#fff}
 .scene-overlay{color:#254458;text-shadow:none}

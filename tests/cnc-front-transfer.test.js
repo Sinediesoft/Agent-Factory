@@ -4,7 +4,7 @@ import test from 'node:test';
 import { Box3, Raycaster, Triangle, Vector3 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DEMO } from '../src/config.js';
-import { frontStation, frontTransferPose, poseFrontRobot, gripOffset, fixtureHeight } from '../src/cnc-front-transfer.js';
+import { frontTransferPose, poseFrontRobot, gripOffset, fixtureHeight } from '../src/cnc-front-transfer.js';
 import { buildSimulation } from '../src/sim.js';
 import { stateAt } from '../src/playback.js';
 import { makeTrackLayout } from '../src/track-layout.js';
@@ -27,12 +27,12 @@ function collider(mesh, sliding) {
   return {name:mesh.name, sliding, triangles, bounds:new Box3().setFromPoints(vertices)};
 }
 
-test('CNC-L01 carriage, tool and workpiece clear the CAD enclosure throughout a front transfer', async () => {
+const cncStations = Object.entries(DEMO.stations).filter(([,station]) => station.type === 'CNC');
+for (const [frontStation, station] of cncStations) test(frontStation+' clears the CAD enclosure during front loading and unloading', async () => {
   const [shell,group,cnc,track] = await Promise.all(['cnc-l01-shell','robot','cnc','track'].map(load));
-  const station=DEMO.stations[frontStation];
-  const meshes=group.getObjectsByProperty('isMesh',true).filter(m=>!m.name.startsWith('protect-'));
+  const meshes=group.getObjectsByProperty('isMesh',true);
   const robot={group,shoulder:group.getObjectByName('Shoulder'),elbow:group.getObjectByName('Elbow'),
-    wrist:group.getObjectByName('Wrist'),jaws:meshes.filter(m=>m.name.startsWith('rough-jaw'))};
+    wrist:group.getObjectByName('Wrist'),jaws:meshes.filter(m=>/^(rough|protect)-jaw/.test(m.name))};
   const door=shell.getObjectByName('SlidingDoor');
   const solids=shell.getObjectsByProperty('isMesh',true).map(m=>collider(m,m.parent===door));
   for (const m of cnc.getObjectsByProperty('isMesh',true)) {
@@ -51,14 +51,16 @@ test('CNC-L01 carriage, tool and workpiece clear the CAD enclosure throughout a 
     assert.ok(hits.some(hit=>Math.abs(hit.point.y-railHead)<.001), `${shoe.name} has no rail beneath it at the dock`);
   }
 
-  const sim=buildSimulation(), transfer=sim.spans.filter(p=>p.station===frontStation && p.piece==='P01' && p.category==='action');
+  const sim=buildSimulation();
+  const pieceId=sim.spans.find(p=>p.station===frontStation && p.mode==='place').piece;
+  const transfer=sim.spans.filter(p=>p.station===frontStation && p.piece===pieceId && p.category==='action');
   for (const mode of ['place','pick']) {
     const actions=transfer.filter(s=>s.mode===mode);
     const start=actions[0].start, end=actions.at(-1).end;
     const ticks=Array.from({length:end-start+101},(_,i)=>start-50+i);
     let nearFixture=false, crossedDoor=false;
     for (const tick of ticks) {
-      const state=stateAt(sim,tick), arm=state.arms[actions[0].arm], piece=state.pieces.P01;
+      const state=stateAt(sim,tick), arm=state.arms[actions[0].arm], piece=state.pieces[pieceId];
       assert.notEqual(arm.frontRailYaw,null);
       const pose=arm.frontPose ?? frontTransferPose(station,null,piece.carriedBy?'place':'pick',0);
       const open=state.machines[frontStation].doorFraction ?? 0;
@@ -73,13 +75,14 @@ test('CNC-L01 carriage, tool and workpiece clear the CAD enclosure throughout a 
       }
       if (tcp.z<1.70) {assert.equal(open,1);crossedDoor=true;}
       if (Math.abs(tcp.z-.87)<.001 && Math.abs(tcp.y-fixtureHeight)<.001) nearFixture=true;
-      const bounds=meshes.map(m=>[m.name,new Box3().setFromObject(m,true)]);
+      const inactive = arm.tool.includes('PROTECT') ? 'rough-' : 'protect-';
+      const bounds=meshes.filter(m=>!m.name.startsWith(inactive)).map(m=>[m.name,new Box3().setFromObject(m,true)]);
       const partCenter=piece.carriedBy ? tcp : new Vector3(endX-station.x,fixtureHeight,.87);
       const partBox=new Box3().setFromCenterAndSize(partCenter,new Vector3(.50,.18,.75));
       for (const [name,body] of bounds) {
-        assert.ok(!body.intersectsBox(partBox.clone().expandByScalar(-.00005)),`${mode} tick ${tick}: ${name} penetrates P01`);
+        assert.ok(!body.intersectsBox(partBox.clone().expandByScalar(-.00005)),`${mode} tick ${tick}: ${name} penetrates ${pieceId}`);
       }
-      bounds.push(['P01',partBox]);
+      bounds.push([pieceId,partBox]);
       for (const [name,box] of bounds) {
         for (const solid of solids) {
           // Conservatively test the moving part's entire AABB against the actual CAD triangles.

@@ -105,11 +105,12 @@ export function routePhases(from, to, config = DEMO, layout = makeTrackLayout(co
       const quadrant=Math.floor(((angle+2*Math.PI)%(2*Math.PI))/(Math.PI/2));
       occupied.add(`ring:CNC:${quadrant}`);
     }
-    const resources = [...occupied];
+    // Only one carriage can pass through the common turnout and feeder at a time.
+    const resources = [...occupied, 'feeder:CNC'];
     for (const id of [start,end]) if (id !== 'CNC') resources.push(`dock:${id}`);
     return {label: `${start} → ${end} 軌道移動`, category:'travel', resources,
       path, from:path[0], to:path.at(-1), ticks:secondsToTicks(length/speed,config),
-      frontRail: start === 'CNC-L01' ? 'exit' : end === 'CNC-L01' ? 'enter' : null};
+      cncFrom: start === 'CNC' ? null : start, cncTo: end === 'CNC' ? null : end};
   }
   if (a === b) {
     if (a === 'CNC') return [cncTravel(from, to)];
