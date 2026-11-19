@@ -210,17 +210,16 @@ def make_cnc():
     return root
 
 
-def make_wire():
-    root=empty('MachineRoot')
-    # The fixed body is the mesh returned by ComfyUI. Keep the gate and wire guides independent.
+def attach_depth_enclosure(root, kind):
+    # Import the ComfyUI mesh as a fixed body so the gate and tooling can move independently.
     before = set(bpy.data.objects)
-    bpy.ops.import_scene.gltf(filepath=str(ROOT/'tools/comfyui/wire/wire-depth.glb'))
+    bpy.ops.import_scene.gltf(filepath=str(ROOT/'tools/comfyui'/kind/f'{kind}-depth.glb'))
     imported = set(bpy.data.objects) - before
     for obj in imported:
         if obj.parent is None:
             obj.parent = root
         if obj.type == 'MESH':
-            obj.name = 'wire-depth-enclosure'
+            obj.name = f'{kind}-depth-enclosure'
             for face in obj.data.polygons:
                 face.use_smooth = True
             obj.data.set_sharp_from_angle(angle=math.radians(28))
@@ -228,6 +227,11 @@ def make_wire():
             normal.keep_sharp = True
             obj.data.materials.clear()
             obj.data.materials.append(WHITE)
+
+
+def make_wire():
+    root=empty('MachineRoot')
+    attach_depth_enclosure(root,'wire')
     cube('machine-plinth',(0,0,.16),(3.73,2.97,.30),BLACK,root,.05)
     cube('dielectric-tank',(-.32,-.47,.80),(2.33,1.95,.33),STEEL,root,.04)
     for side,x in [('left',-.52),('right',-.08)]:
@@ -258,19 +262,40 @@ def make_wire():
 
 
 def make_edm():
-    root=empty('MachineRoot')
-    machine_base(root,3.75,3.2,3.05)
-    doors(root,2.5,1.5,-1.73)
-    cube('dielectric-basin',(0,-.7,.89),(2.25,1.25,.72),STEEL,root,.045)
-    cube('fixture-block',(0,-.7,1.3),(.82,.75,.13),CHROME,root,.015)
-    cylinder('z-ram',(0,-.55,2.27),.32,.82,YELLOW,root)
-    cube('electrode-holder',(0,-.55,1.76),(.36,.31,.21),BLACK,root,.015)
-    cylinder('electrode',(0,-.55,1.5),.105,.4,CHROME,root)
-    for x in [-1.1,1.1]:
-        link('coolant-line',(x,.2,2.05),(x,-.73,1.28),.045,BLACK,root)
-    panel_controls(root,1.68,-1.8,1.6)
-    status_light(root,1.5,-.7,3.26)
-    text_mesh('family','EDM // DEMO',(-1.6,-1.78,2.65),.18,YELLOW,root)
+    root = empty('MachineRoot')
+    attach_depth_enclosure(root, 'edm')
+    tank_paint = material('edm-slate',(.12,.24,.29),.3,.35)
+    copper = material('edm-copper',(.63,.27,.12),.78,.29)
+    cube('machine-plinth',(0,0,.16),(3.61,2.96,.30),BLACK,root,.04)
+    cube('dielectric-basin',(0,-.53,.89),(2.14,1.86,.52),STEEL,root,.05)
+    cube('fixture-block',(0,-.70,1.255),(.43,.79,.22),CHROME,root,.015)
+    for x in (-1.03,1.03):
+        cube('basin-wall',(x,-.49,1.30),(.11,1.81,.57),tank_paint,root,.022)
+        link('coolant-line',(x,.06,2.13),(.77*x,-.58,1.67),.033,BLACK,root)
+
+    # The fixed collar surrounds the polished moving ram; the electrode parks above the loading path.
+    for x in (-.19,.19):
+        cube('ram-sleeve',(x,-.70,2.67),(.10,.46,.33),STEEL,root,.014)
+    for y in (-.51,-.89):
+        cube('ram-sleeve',(0,y,2.67),(.28,.10,.33),STEEL,root,.014)
+    cube('z-ram',(0,-.70,2.92),(.23,.23,.78),CHROME,root,.018)
+    cube('electrode-holder',(0,-.70,2.435),(.34,.29,.20),BLACK,root,.014)
+    cube('electrode',(0,-.70,2.21),(.22,.23,.26),copper,root,.012)
+
+    gate = empty('TankGate',root)
+    gate['stroke'] = .94
+    cube('gate-apron',(0,-1.70,1.25),(2.17,.10,.48),tank_paint,gate,.04)
+    cube('gate-window-rail',(0,-1.70,1.90),(2.17,.10,.15),tank_paint,gate,.02)
+    for x in (-.985,.985):
+        cube('gate-window-post',(x,-1.70,1.66),(.20,.10,.39),tank_paint,gate,.015)
+    cube('gate-window',(0,-1.70,1.66),(1.78,.035,.37),GLASS,gate,.012)
+    cube('gate-trim',(0,-1.76,1.94),(2.02,.018,.035),YELLOW,gate,.005)
+    text_mesh('machine-id','EDM-01',(-.88,-1.76,1.21),.17,WHITE_TOP,gate)
+    text_mesh('machine-type','DIE SINKER',(.28,-1.76,1.22),.105,WHITE_TOP,gate)
+    for x in (-1.155,1.155):
+        cube('gate-guide',(x,-1.61,1.12),(.08,.11,1.97),STEEL,root,.012)
+    panel_controls(root,1.49,-1.55,1.72)
+    status_light(root,1.46,-.94,3.13)
     return root
 
 
@@ -343,7 +368,7 @@ def make_full_scene():
     layout = load_layout()
     exterior = load_cnc_exterior()
     coords = {d['id']: d['machinePosition'] for d in layout['docks'] if 'machinePosition' in d}
-    coords.update({'GRIND-01':(0,-16),'EDM-01':(17,7)})
+    coords['GRIND-01'] = (0,-16)
     builders={'GRIND':make_grind,'WIRE':make_wire,'EDM':make_edm}
     for ident,(x,z) in coords.items():
         kind=ident.split('-')[0]

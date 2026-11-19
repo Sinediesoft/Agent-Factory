@@ -7,7 +7,7 @@ import { buildSimulation, validateSimulation } from './sim.js';
 import { stateAt, PlaybackClock } from './playback.js';
 import { machineLampState, machineStatusText, updateMachineLamp } from './machine-status.js';
 import { monitorAreas, monitorAreaPose, monitorInteriorPose, monitorTarget } from './monitor.js';
-import { machiningCycle, machiningFrame, wireSlotLength } from './machining-animation.js';
+import { machiningCycle, machiningFrame, edmDischarging, edmSurfaceProgress, wireSlotLength } from './machining-animation.js';
 
 import { frontStation, frontTransferPose, poseFrontRobot, gripOffset, frontFixture } from './cnc-front-transfer.js';
 
@@ -136,7 +136,7 @@ function applyMonitorCutaway(){
   }
   for(const [id,obj] of Object.entries(machineMeshes)){
     if(obj.group){
-      const interiorNames=/^(cross-slide|table-t-slot|work-fixture|spindle-housing|spindle-chuck|cutting-tool|magnetic-chuck|chuck-line|grinding-wheel|wheel-center|wheel-guard|coolant-nozzle|coolant-line|dielectric-tank|dielectric-basin|tank-rim|wire-guide-.*|wire-bed-.*|lower-wire-head|upper-wire-head|wire-filament|fixture-block|z-ram|electrode-holder|electrode|machining-.*)$/;
+      const interiorNames=/^(cross-slide|table-t-slot|work-fixture|spindle-housing|spindle-chuck|cutting-tool|magnetic-chuck|chuck-line|grinding-wheel|wheel-center|wheel-guard|coolant-nozzle|coolant-line|dielectric-tank|dielectric-basin|tank-rim|wire-guide-.*|wire-bed-.*|lower-wire-head|upper-wire-head|wire-filament|fixture-block|ram-sleeve.*|z-ram|electrode-holder|electrode|machining-.*)$/;
       obj.group.traverse(part=>{
         if(part.isMesh)part.visible=!(inside&&id===selectedId)||interiorNames.test(part.name);
       });
@@ -388,7 +388,7 @@ $('cnc-shell-demo').addEventListener('click', () => {
   controls.update();
   setFocusButton($('cnc-shell-demo'));
   document.querySelector('.scene-overlay span:first-child').textContent =
-    [shellStationId, station.type === 'WIRE' ? 'ROBOCUT · ComfyUI 外殼' : 'ROBODRILL', loading.piece].join(' · ');
+    [shellStationId, {CNC:'ROBODRILL',WIRE:'ROBOCUT · ComfyUI 外殼',EDM:'成形放電 · ComfyUI 外殼'}[station.type], loading.piece].join(' · ');
   const arrival = sim.spans.find(span => span.taskId === loading.taskId && span.frontTo === shellStationId);
   playback.seek(arrival ? Math.max(arrival.start, loading.start - 50) : loading.start);
   const cutting = processSpans[shellStationId].filter(span => span.piece === loading.piece);
@@ -407,7 +407,7 @@ const movingParts={
   WIRE:['wire-guide-slide','upper-wire-head','wire-filament','lower-wire-head'],
   EDM:['z-ram','electrode-holder','electrode'],
 };
-const machiningContacts={CNC:[0,1.32,.87],GRIND:[0,1.25,.79],WIRE:[-.30,1.44,-.20],EDM:[0,1.57,.7]};
+const machiningContacts={CNC:[0,1.32,.87],GRIND:[0,1.25,.79],WIRE:[-.30,1.44,-.20],EDM:[0,2.08,.7]};
 const machiningColors={CNC:0xd97423,GRIND:0xf09524,WIRE:0x138fb2,EDM:0x7447c4};
 const spinAxis=new THREE.Vector3(0,1,0),spinQuaternion=new THREE.Quaternion(),motionOffset=new THREE.Vector3();
 function attachMachiningAnimation(group,type){
@@ -416,7 +416,7 @@ function attachMachiningAnimation(group,type){
       spin:(type==='CNC'&&mesh.name!=='cutting-tool')||(type==='GRIND'&&['grinding-wheel','wheel-center'].includes(mesh.name))}));
   const effect=new THREE.Group();effect.name='machining-effect';
   effect.position.set(...machiningContacts[type]);effect.visible=false;
-  if(type==='WIRE') effect.scale.setScalar(.38);
+  if(type==='WIRE' || type==='EDM') effect.scale.setScalar(.38);
   const ring=new THREE.Mesh(new THREE.TorusGeometry(.14,.014,7,32),
     new THREE.MeshBasicMaterial({color:machiningColors[type],transparent:true,opacity:.72,depthWrite:false}));
   ring.name='machining-contact-ring';ring.rotation.x=Math.PI/2;effect.add(ring);
@@ -485,6 +485,8 @@ Promise.all([...Object.values(modelFiles),'robot','track'].map(name=>loadModel(`
     document.querySelector('.scene-overlay span:first-child').textContent='3D 模型載入失敗，顯示簡化備援模型';});
 const workpieceMeshes={};
 const wireStage = DEMO.recipe.route.findIndex(step=>step.id==='WIRE')+1;
+const edmStage = DEMO.recipe.route.findIndex(step=>step.id==='EDM')+1;
+const sinkMarkGeometry = new THREE.PlaneGeometry(.23,.22);
 const kerfGeometry = new THREE.PlaneGeometry(1,.012);
 const kerfMaterial = new THREE.MeshBasicMaterial({color:0x343a3d});
 for(let i=0;i<6;i++) {
@@ -495,6 +497,14 @@ for(let i=0;i<6;i++) {
   kerf.visible=false;
   mesh.add(kerf);
   mesh.userData.kerf=kerf;
+  const mark = new THREE.Mesh(sinkMarkGeometry, new THREE.MeshBasicMaterial({
+    color:0x524237, transparent:true, depthWrite:false
+  }));
+  mark.rotation.x=-Math.PI/2;
+  mark.position.y=.091;
+  mark.visible=false;
+  mesh.add(mark);
+  mesh.userData.sinkMark=mark;
   workpieceMeshes[`P${String(i+1).padStart(2,'0')}`]=mesh;
 }
 const labelPoints={...Object.fromEntries(Object.entries(DEMO.stations).map(([k,v])=>[k,[v.x,4.25,v.z]])),
@@ -620,12 +630,18 @@ function updateScene(state){
         }
       }
       const wire = DEMO.stations[id].type==='WIRE';
+      const edm = DEMO.stations[id].type==='EDM';
       const inView = (monitorMode&&monitorView==='inside'&&monitorTargetSelect.value===id) ||
-        (wire&&shellTrialView&&shellStationId===id);
-      animation.effect.visible=frame.active && inView &&
+        ((wire||edm)&&shellTrialView&&shellStationId===id);
+      animation.effect.visible=frame.active && inView && (!edm || edmDischarging(frame.progress)) &&
         (!wire || animation.contact.z+motionOffset.z >= frontFixture(DEMO.stations[id]).depth-.375);
       if(animation.effect.visible){
         animation.effect.position.copy(animation.contact).add(motionOffset);
+        if(edm){
+          // Show a local discharge at the perimeter of the square copper electrode.
+          animation.effect.position.x+=.105*Math.sin(frame.phase*2);
+          animation.effect.position.z+=.116;
+        }
         animation.ring.material.opacity=.52+frame.pulse*.24;
         for(const [index,spark] of animation.sparks.entries()){
           const angle=frame.phase*3+index*Math.PI/4;
@@ -656,8 +672,7 @@ function updateScene(state){
         mesh.position.set(s.dock[0],fixture.height,s.z+fixture.depth);
         mesh.rotation.y=Math.PI/2;
       } else {
-        const [height,depth]={GRIND:[1.145,.79],EDM:[1.455,.7]}[s.type];
-        mesh.position.set(s.x,height,s.z+depth);
+        mesh.position.set(s.x,1.145,s.z+.79); // grinder chuck
       }
     }
     else {const s=DEMO.stores[p.location];const index=Number(id.slice(1))-1;mesh.position.set(s.x-1.25+(index%3)*1.25,.84,s.z-.47+Math.floor(index/3)*.9);}
@@ -667,6 +682,10 @@ function updateScene(state){
     kerf.visible=length>0;
     kerf.position.set(.375-length/2,.0905,0);
     kerf.scale.x=length;
+    const sinking=p.location==='EDM-01' && processSpanAt(p.location,state.tick);
+    const burn=p.stage>=edmStage ? 1 : sinking ? edmSurfaceProgress((state.tick-sinking.start)/(sinking.end-sinking.start)) : 0;
+    mesh.userData.sinkMark.visible=burn>0;
+    mesh.userData.sinkMark.material.opacity=.72*burn;
     mesh.material.color.set(p.done?0x8bd5ad:p.stage>=2?0xc2d9ee:0xc6a982);
   }
 }

@@ -57,8 +57,8 @@ export function makeTrackLayout(config = DEMO) {
     if (machine.type === 'CNC') {
       // The carriage stops at its center. Leave rail under the front shoes beyond that point.
       docks.push({id, zone:machine.zone, machinePosition:[machine.x,machine.z], ...frontSpur(dock,radius,cncDocks)});
-    } else if (machine.type === 'WIRE') {
-      const [cx,cz] = hubs.WIRE;
+    } else if (machine.type === 'WIRE' || machine.type === 'EDM') {
+      const [cx,cz] = hubs[machine.zone];
       docks.push({id, zone:machine.zone, machinePosition:[machine.x,machine.z],
         path:[[cx+radius,cz],dock], railEnd:[dock[0],dock[1]-.82]});
     } else {
