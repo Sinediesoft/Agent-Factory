@@ -57,6 +57,10 @@ export function makeTrackLayout(config = DEMO) {
     if (machine.type === 'CNC') {
       // The carriage stops at its center. Leave rail under the front shoes beyond that point.
       docks.push({id, zone:machine.zone, machinePosition:[machine.x,machine.z], ...frontSpur(dock,radius,cncDocks)});
+    } else if (machine.type === 'WIRE') {
+      const [cx,cz] = hubs.WIRE;
+      docks.push({id, zone:machine.zone, machinePosition:[machine.x,machine.z],
+        path:[[cx+radius,cz],dock], railEnd:[dock[0],dock[1]-.82]});
     } else {
       docks.push({id, zone:machine.zone, path:[near(hubs[machine.zone],dock,radius),dock]});
     }
@@ -108,13 +112,13 @@ export function validateTrackLayout(layout, config = DEMO) {
 }
 
 // Follow the same polygonal rails that Blender exports, including both dock spurs.
-export function cncRailPath(layout, from, to) {
-  const ring = layout.rings.find(item => item.id === 'CNC');
-  const spur = id => id === 'CNC'
-    ? [layout.branches.find(item => item.id === 'CNC').paths[0].at(-1)]
+export function stationRailPath(layout, from, to, zone) {
+  const ring = layout.rings.find(item => item.id === zone);
+  const spur = id => id === zone
+    ? [layout.branches.find(item => item.id === zone).paths[0].at(-1)]
     : layout.docks.find(item => item.id === id).path;
   const origin = spur(from), arrive = spur(to);
-  if (from !== 'CNC' && to !== 'CNC') {
+  if (from !== zone && to !== zone) {
     let common = 0;
     while (common < origin.length && common < arrive.length &&
       Math.hypot(origin[common][0]-arrive[common][0], origin[common][1]-arrive[common][1]) < 1e-7) common++;
@@ -125,7 +129,7 @@ export function cncRailPath(layout, from, to) {
   const start = angle(depart.at(-1)), end = angle(arrive[0]);
   const turn = 2*Math.PI;
   const positive = radians => (radians+turn)%turn;
-  const delta = from !== 'CNC' && to !== 'CNC' ? positive(end-start)
+  const delta = from !== zone && to !== zone ? positive(end-start)
     : Math.atan2(Math.sin(end-start), Math.cos(end-start));
   const vertices = ring.path.slice(0,-1).map(p => {
     const a = angle(p)-start;

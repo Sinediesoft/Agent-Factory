@@ -10,7 +10,7 @@
 | [`public/models/cnc.glb`](../public/models/cnc.glb) | CNC 的主軸、工作台、治具與備援外觀 |
 | [`public/models/cnc-l01-shell.glb`](../public/models/cnc-l01-shell.glb) | 四台 CNC 共用的 Onshape 外殼、單滑門與三色燈柱 |
 | [`public/models/grind.glb`](../public/models/grind.glb) | 平面磨床示範外觀 |
-| [`public/models/wire.glb`](../public/models/wire.glb) | 線割設備示範外觀 |
+| [`public/models/wire.glb`](../public/models/wire.glb) | ComfyUI 固定外殼、升降槽門、電極線與上下線導頭 |
 | [`public/models/edm.glb`](../public/models/edm.glb) | 放電設備示範外觀 |
 | [`public/models/robot.glb`](../public/models/robot.glb) | R1 / R2 共用的軌道載台與關節手臂 |
 | [`public/models/track.glb`](../public/models/track.glb) | 主環、8 個區內環、6 組支軌、14 個停靠接入段與 6 座轉盤 |
@@ -24,7 +24,7 @@
 | [`tools/track-layout.json`](../tools/track-layout.json) | 從布局來源自動匯出的 Blender 輸入 |
 | [`tools/render_blender_details.py`](../tools/render_blender_details.py) | 從 `.blend` 輸出近景預覽 |
 
-網頁用 `GLTFLoader` 載入 GLB，並沿用原本的模擬事件。CNC 外殼提供 `SlidingDoor`、`StackRed`、`StackOrange`、`StackGreen`。其他機台模型提供 `Door_L`、`Door_R`、`StatusRed`、`StatusYellow`、`StatusGreen` 節點；手臂模型提供 `Shoulder`、`Elbow`、`Wrist`、`ToolRough`、`ToolProtect` 節點。軌道模型提供 `Rotor_CNC` 等六個轉盤節點與 14 個 `Dock_*` 停靠端點；轉盤角度跟隨預約時段回放。模型載入失敗時保留簡化備援模型，畫面會顯示載入失敗訊息。
+網頁用 `GLTFLoader` 載入 GLB，並沿用原本的模擬事件。CNC 外殼提供 `SlidingDoor`、`StackRed`、`StackOrange`、`StackGreen`。WIRE-01 使用 `TankGate` 和匯出資產的 `stroke` 行程驅動升降槽門。[生成與驗證方式](../tools/comfyui/wire/README.md)。其餘機台模型提供 `Door_L`、`Door_R`、`StatusRed`、`StatusYellow`、`StatusGreen` 節點；手臂模型提供 `Shoulder`、`Elbow`、`Wrist`、`ToolRough`、`ToolProtect` 節點。軌道模型提供 `Rotor_CNC` 等六個轉盤節點與 14 個 `Dock_*` 停靠端點；轉盤角度跟隨預約時段回放。模型載入失敗時保留簡化備援模型，畫面會顯示載入失敗訊息。
 
 每台機台的三段燈柱由回放狀態控制：紅色表示異常，橘色表示加工運行中，綠色表示程式執行完畢、等待收料；閒置時燈光熄滅。`machine_faulted` 和 `machine_recovered` 事件可驅動紅燈，異常狀態會維持到解除事件。固定六件正常示範不產生異常事件；目前燈號只呈現狀態，不包含故障停機與重新排程。
 

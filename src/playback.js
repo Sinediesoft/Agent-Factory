@@ -1,6 +1,6 @@
 import { DEMO, pointFor } from './config.js';
 
-import { frontTransferPose, railSample } from './cnc-front-transfer.js';
+import { frontFixture, frontTransferPose, railSample } from './cnc-front-transfer.js';
 
 export function stateAt(sim, tick) {
   const config = sim.config || DEMO;
@@ -54,11 +54,11 @@ export function stateAt(sim, tick) {
       if (span.path) {
         const sample = railSample(span.path,fraction);
         arm.position = sample.point;
-        arm.frontStationId = span.cncTo ?? (tick < span.end ? span.cncFrom : null);
+        arm.frontStationId = span.frontTo ?? (tick < span.end ? span.frontFrom : null);
         // Back out with the same chassis orientation the previous route parked in.
         const [first, next] = span.path;
         const startYaw = -Math.atan2(next[1]-first[1], next[0]-first[0]);
-        const reverse = span.cncFrom && Math.cos(startYaw - (arm.frontRailYaw ?? Math.PI/2)) < 0;
+        const reverse = span.frontFrom && Math.cos(startYaw - (arm.frontRailYaw ?? Math.PI/2)) < 0;
         arm.frontRailYaw = arm.frontStationId ? sample.yaw + (reverse ? Math.PI : 0) : null;
       } else {
         arm.frontStationId = null;
@@ -71,7 +71,7 @@ export function stateAt(sim, tick) {
       arm.status = span.category;
       arm.activeLabel = span.label;
       arm.activeStation = span.station || null;
-      if (config.stations[span.station]?.type === 'CNC' && span.category === 'action') {
+      if (frontFixture(config.stations[span.station]) && span.category === 'action') {
         const action = span.action ?? span.label.split(' · ').at(-1);
         const pose = frontTransferPose(config.stations[span.station],action,span.mode,(tick-span.start)/(span.end-span.start));
         arm.frontStationId = span.station;

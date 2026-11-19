@@ -212,19 +212,48 @@ def make_cnc():
 
 def make_wire():
     root=empty('MachineRoot')
-    machine_base(root,3.8,3.2,3.0)
-    doors(root,2.5,1.5,-1.73)
-    cube('dielectric-tank',(-.15,-.67,.83),(2.25,1.36,.78),STEEL,root,.055)
-    cube('tank-rim',(-.15,-.67,1.22),(2.45,1.55,.09),CHROME,root,.018)
-    cylinder('upper-wire-head',(-.15,-.67,2.25),.21,.47,YELLOW,root)
-    link('wire-filament',(-.15,-.67,2.05),(-.15,-.67,1.29),.012,CHROME,root)
-    for x in [-.57,.57]:
-        cylinder('wire-spool',(x,.66,2.12),.31,.16,STEEL,root,32,(math.pi/2,0,0))
-        cylinder('wire-spool-hub',(x,.55,2.12),.07,.17,BLACK,root,20,(math.pi/2,0,0))
-    panel_controls(root,1.7,-1.8,1.6)
-    status_light(root,1.5,-.7,3.26)
-    text_mesh('brand','FANUC',(-1.65,-1.77,2.65),.24,YELLOW,root)
-    text_mesh('family','WIRE EDM // DEMO',(-.24,-1.77,2.65),.11,BLACK,root)
+    # The fixed body is the mesh returned by ComfyUI. Keep the gate and wire guides independent.
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=str(ROOT/'tools/comfyui/wire/wire-depth.glb'))
+    imported = set(bpy.data.objects) - before
+    for obj in imported:
+        if obj.parent is None:
+            obj.parent = root
+        if obj.type == 'MESH':
+            obj.name = 'wire-depth-enclosure'
+            for face in obj.data.polygons:
+                face.use_smooth = True
+            obj.data.set_sharp_from_angle(angle=math.radians(28))
+            normal = obj.modifiers.new('Sheet panel normals', 'WEIGHTED_NORMAL')
+            normal.keep_sharp = True
+            obj.data.materials.clear()
+            obj.data.materials.append(WHITE)
+    cube('machine-plinth',(0,0,.16),(3.73,2.97,.30),BLACK,root,.05)
+    cube('dielectric-tank',(-.32,-.47,.80),(2.33,1.95,.33),STEEL,root,.04)
+    for side,x in [('left',-.52),('right',-.08)]:
+        cube('wire-bed-'+side,(x,-.67,1.11),(.085,.90,.30),CHROME,root,.008)
+    # Cut from the back edge. The rest position clears the part during either transfer.
+    cube('wire-guide-rail',(-.30,-.18,2.57),(.24,1.99,.14),STEEL,root,.018)
+    cube('wire-guide-slide',(-.30,.20,2.41),(.18,.18,.27),CHROME,root,.014)
+    cylinder('upper-wire-head',(-.30,.20,2.12),.15,.38,YELLOW,root)
+    cylinder('lower-wire-head',(-.30,.20,1.09),.075,.14,STEEL,root)
+    link('wire-filament',(-.30,.20,1.94),(-.30,.20,1.15),.009,CHROME,root)
+    cylinder('wire-spool',(-.84,-.05,2.50),.26,.13,STEEL,root,40,(math.pi/2,0,0))
+    cylinder('wire-spool-hub',(-.84,-.13,2.50),.10,.035,BLACK,root,24,(math.pi/2,0,0))
+
+    gate = empty('TankGate',root)
+    gate['stroke'] = .94
+    cube('gate-lower',(-.33,-1.71,1.24),(2.44,.10,.48),YELLOW,gate,.03)
+    cube('gate-top',(-.33,-1.71,1.97),(2.44,.10,.14),YELLOW,gate,.025)
+    for side,x in [('left',-1.45),('right',.79)]:
+        cube('gate-'+side,(x,-1.71,1.69),(.20,.10,.47),YELLOW,gate,.018)
+    cube('gate-window',(-.33,-1.71,1.69),(2.07,.035,.45),GLASS,gate,.012)
+    for x in (-1.60,.94):
+        cube('gate-guide',(x,-1.60,1.08),(.075,.11,1.96),STEEL,root,.012)
+    panel_controls(root,1.42,-1.56,1.72)
+    status_light(root,1.39,-.83,3.17)
+    text_mesh('brand','FANUC',(-1.41,-1.77,1.25),.14,RED,gate)
+    text_mesh('family','ROBOCUT',(-1.41,-1.77,1.10),.115,BLACK,gate)
     return root
 
 
@@ -303,7 +332,7 @@ def export_model(name, builder):
     builder()
     bpy.ops.export_scene.gltf(filepath=str(OUT / f'{name}.glb'), export_format='GLB',
                               export_apply=True, export_yup=True, export_cameras=False,
-                              export_lights=False)
+                              export_lights=False, export_extras=True)
     print('exported', name, (OUT / f'{name}.glb').stat().st_size, flush=True)
 
 
@@ -314,7 +343,7 @@ def make_full_scene():
     layout = load_layout()
     exterior = load_cnc_exterior()
     coords = {d['id']: d['machinePosition'] for d in layout['docks'] if 'machinePosition' in d}
-    coords.update({'GRIND-01':(0,-16),'WIRE-01':(17,-7),'EDM-01':(17,7)})
+    coords.update({'GRIND-01':(0,-16),'EDM-01':(17,7)})
     builders={'GRIND':make_grind,'WIRE':make_wire,'EDM':make_edm}
     for ident,(x,z) in coords.items():
         kind=ident.split('-')[0]

@@ -22,6 +22,8 @@ npm run build  # 產生 dist/app.html 與 dist/index.html
 
 CNC 工作區的四台機台共用以 FANUC ROBODRILL α-D21MiB5 Plus 為外觀參考的 Onshape 模型，包含單扇滑門、斜紋視窗與右側操作面板。在場景上方選擇 CNC 編號後按「上下料試播」，可觀看該台首件工件從正門上料、加工到完工下料。四台共用進區軌道，並各有對準門口的專用停靠支線。[模型與重建方式](tools/onshape/README.md) · [觀看 CNC-R01、R02、L02 完整試播](docs/visuals/cnc-area-front-cycles.mp4)
 
+WIRE-01 使用本機 ComfyUI 生成的 ROBOCUT 風格外殼與可升降的黃色槽門。在場景上方選「WIRE-01」後點「上下料試播」，即可觀看正面進料、關門線割與完工下料。[生成工作流程](tools/comfyui/wire/README.md) · [完整試播](docs/visuals/wire-01-full-cycle.mp4)
+
 ## 已實作
 
 - 固定六道順序：`L01/R01 → GRIND → WIRE → R02 → EDM → L02 → FG`，六件逐件流轉；粗加工 4+8 分鐘，每件淨加工 47 分鐘。
@@ -44,7 +46,7 @@ CNC 工作區的四台機台共用以 FANUC ROBODRILL α-D21MiB5 Plus 為外觀�
 
 Blender 可編輯場景、GLB 與重建方法見 [docs/BLENDER_MODELS.md](docs/BLENDER_MODELS.md)。本次沒有可用的 Blender MCP，因此以 Blender `bpy` 產出；模型是示範概念，並非原廠 CAD。
 
-預設六件結果：36 筆必要加工完成、6 筆 FG 放置確認，RAW / WIP / FG 從 `6/0/0` 到 `0/0/6`，淨加工工作量 282 機台分鐘，模擬完工時間約 199.44 分鐘。這是確定性貪婪排程的結果，不是全域最優解。
+預設六件結果：36 筆必要加工完成、6 筆 FG 放置確認，RAW / WIP / FG 從 `6/0/0` 到 `0/0/6`，淨加工工作量 282 機台分鐘，模擬完工時間約 207.77 分鐘。這是確定性貪婪排程的結果，不是全域最優解。
 
 ## 明確尚未完成
 
