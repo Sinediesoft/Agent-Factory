@@ -22,6 +22,25 @@ function ramOffset(progress, phase) {
   return -.530*feed+lift;
 }
 
+// Five overlapping wheel-width passes across the blank. Cross-feed at each reversal.
+const grindLead = .12;
+export const wheelOnStock = progress => progress >= grindLead && progress < 1-grindLead;
+
+function grindingOffset(progress) {
+  const path = Math.max(0,Math.min(1,(progress-grindLead)/(1-2*grindLead))) * 9;
+  const segment = Math.min(8,Math.floor(path));
+  const fraction = path-segment;
+  const pass = Math.floor(segment/2);
+  const crossFeed = segment%2 === 1;
+  const along = crossFeed ? 1 : fraction;
+  const x = (pass%2 === 0 ? along : 1-along) * .49;
+  const z = (pass + (crossFeed ? fraction : 0)) * .14;
+  const down = Math.max(0,Math.min(1,progress/grindLead,(1-grindLead/2-progress)/(grindLead/2)));
+  // Retract vertically before returning the grinding head to its loading position.
+  const home = Math.max(0,Math.min(1,(1-progress)/(.5*grindLead)));
+  return [x*home, -.38*down, z*home];
+}
+
 // All motion is derived from the simulation tick, so pause and seek reproduce the same frame.
 export function machiningFrame(tick, span, type, status) {
   if (!span || status !== 'processing' || tick < span.start || tick >= span.end) {
@@ -33,11 +52,11 @@ export function machiningFrame(tick, span, type, status) {
   const wave = Math.sin(phase), cross = Math.cos(phase * .7);
   const offset = {
     CNC: [.14 * wave, -.095 - .045 * Math.sin(phase * 2), .04 * cross],
-    GRIND: [.34 * wave, -.035, .08 * cross],
+    GRIND: grindingOffset(progress),
     WIRE: [0, 0, wireTravel(progress)],
     EDM: [0,ramOffset(progress,phase),0],
   }[type] || [0, 0, 0];
-  return { active: true, progress, offset: (type === 'WIRE' || type === 'EDM') ? offset : offset.map(value => value * ease),
+  return { active: true, progress, offset: type === 'CNC' ? offset.map(value => value * ease) : offset,
     phase, pulse: .55 + .45 * Math.sin(phase * 5) };
 }
 

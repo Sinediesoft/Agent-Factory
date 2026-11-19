@@ -90,7 +90,7 @@ export function routePhases(from, to, config = DEMO, layout = makeTrackLayout(co
     label, from: fromPoint, to: toPoint, resources, category,
     ticks: secondsToTicks(distance(fromPoint, toPoint) / speed + extraSeconds, config),
   });
-  const frontZone = zone => zone === 'CNC' || zone === 'WIRE' || zone === 'EDM';
+  const frontZone = zone => layout.docks.some(dock => dock.zone === zone && dock.machinePosition);
   const junction = zone => frontZone(zone) ? layout.branches.find(branch => branch.id === zone).paths[0].at(-1) : hub[zone];
   function frontTravel(start, end, zone) {
     const path = stationRailPath(layout, start, end, zone);

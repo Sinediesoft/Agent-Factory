@@ -7,7 +7,7 @@ import { DEMO } from '../src/config.js';
 import { frontTransferPose, poseFrontRobot, gripOffset, frontFixture } from '../src/cnc-front-transfer.js';
 import { buildSimulation } from '../src/sim.js';
 import { stateAt } from '../src/playback.js';
-import { machiningFrame, edmDischarging, edmSurfaceProgress, wireSlotLength } from '../src/machining-animation.js';
+import { machiningFrame, wheelOnStock, edmDischarging, edmSurfaceProgress, wireSlotLength } from '../src/machining-animation.js';
 import { makeTrackLayout } from '../src/track-layout.js';
 
 async function load(name) {
@@ -30,19 +30,21 @@ function collider(mesh, sliding) {
 
 const frontStations = Object.entries(DEMO.stations).filter(([,station]) => frontFixture(station));
 for (const [frontStation, station] of frontStations) test(frontStation+' clears the enclosure during front loading and unloading', async () => {
-  const tankGate = station.type !== 'CNC';
+  const cncShell = station.type === 'CNC';
+  const tankGate = ['WIRE','EDM'].includes(station.type);
   const modelName = station.type.toLowerCase();
   const {height:fixtureHeight, depth} = frontFixture(station);
-  const [shell,group,cnc,track] = await Promise.all([tankGate?modelName:'cnc-l01-shell','robot','cnc','track'].map(load));
+  const [shell,group,cnc,track] = await Promise.all([cncShell?'cnc-l01-shell':modelName,'robot','cnc','track'].map(load));
   const meshes=group.getObjectsByProperty('isMesh',true);
   const robot={group,shoulder:group.getObjectByName('Shoulder'),elbow:group.getObjectByName('Elbow'),
     wrist:group.getObjectByName('Wrist'),jaws:meshes.filter(m=>/^(rough|protect)-jaw/.test(m.name))};
   const door=shell.getObjectByName(tankGate?'TankGate':'SlidingDoor');
-  assert.ok(door && (!tankGate || shell.getObjectByName(modelName+'-depth-enclosure')));
+  assert.ok(door && (cncShell || shell.getObjectByName(modelName+'-depth-enclosure')));
   if (tankGate) assert.equal(door.userData.stroke,.94);
+  if (station.type === 'GRIND') assert.equal(door.userData.stroke,1.52);
   const solids=shell.getObjectsByProperty('isMesh',true).map(m=>collider(m,m.parent===door));
   for (const m of cnc.getObjectsByProperty('isMesh',true)) {
-    if (!tankGate && /^(work-fixture|cross-slide|table-t-slot|spindle-|cutting-tool)/.test(m.name)) solids.push(collider(m,false));
+    if (cncShell && /^(work-fixture|cross-slide|table-t-slot|spindle-|cutting-tool)/.test(m.name)) solids.push(collider(m,false));
   }
   const path=makeTrackLayout().docks.find(d=>d.id===frontStation).path;
   const [endX,endZ]=path.at(-1);
@@ -94,7 +96,7 @@ for (const [frontStation, station] of frontStations) test(frontStation+' clears 
           // Conservatively test the moving part's entire AABB against the actual CAD triangles.
           const check=box.clone().expandByScalar(-.00005); // allow contact with the fixture at rest
           if (solid.sliding) {
-            const axis=tankGate?'y':'x', stroke=tankGate?door.userData.stroke:1.004;
+            const axis=tankGate?'y':'x', stroke=cncShell?1.004:door.userData.stroke;
             check.min[axis]+=open*stroke; check.max[axis]+=open*stroke;
           }
           if (!check.intersectsBox(solid.bounds)) continue;
@@ -104,6 +106,49 @@ for (const [frontStation, station] of frontStations) test(frontStation+' clears 
     }
     assert.ok(crossedDoor && nearFixture);
   }
+});
+
+test('GRIND-01 sweeps the clamped surface, parks the wheel and unloads with protected jaws', async () => {
+  const id = 'GRIND-01', sim = buildSimulation(), model = await load('grind');
+  const station = DEMO.stations[id], fixture = frontFixture(station);
+  const stock = new Box3().setFromCenterAndSize(new Vector3(0,fixture.height,fixture.depth),new Vector3(.50,.18,.75));
+  const bounds = name => new Box3().setFromObject(model.getObjectByName(name),true);
+  const wheel = bounds('grinding-wheel'), center = wheel.getCenter(new Vector3());
+  const chuck = bounds('magnetic-chuck');
+  assert.ok(Math.abs(chuck.max.y-stock.min.y)<.0001);
+  assert.ok(wheel.min.y-stock.max.y>.35);
+  const guard = bounds('wheel-guard'), hub = bounds('wheel-center'), nozzle = bounds('coolant-nozzle');
+  const processes = sim.spans.filter(s=>s.station===id && s.category==='process');
+  assert.equal(new Set(processes.map(s=>s.piece)).size,6);
+  for (const span of processes) {
+    const first = stateAt(sim,span.start), last = stateAt(sim,span.end);
+    assert.equal(first.machines[id].status,'processing');
+    assert.equal(first.machines[id].doorOpen,false);
+    assert.equal(first.pieces[span.piece].location,id);
+    assert.equal(last.machines[id].status,'ready');
+    const pick = sim.events.find(e=>e.type==='picked' && e.source===id && e.piece===span.piece);
+    assert.ok(pick.tick>span.end);
+    const unloaded = stateAt(sim,pick.tick);
+    assert.match(unloaded.arms[pick.arm].tool,/PROTECT/);
+    assert.equal(unloaded.pieces[span.piece].carriedBy,pick.arm);
+  }
+
+  // Probe the edges as well as the middle of the top face. Only the abrasive rim may touch it.
+  const probes = [-.24,0,.24].flatMap(x=>[-.36,-.18,0,.18,.36].map(z=>({x,z:z+fixture.depth,hit:false})));
+  const span = processes[0];
+  for (let tick=span.start;tick<=span.end;tick++) {
+    const frame = machiningFrame(tick,span,'GRIND','processing');
+    const [dx,dy,dz] = frame.offset, gap = wheel.min.y+dy-stock.max.y;
+    assert.ok(gap>-.0001 && Math.min(guard.min.y,hub.min.y,nozzle.min.y)+dy>stock.max.y);
+    if (frame.active && wheelOnStock(frame.progress)) {
+      assert.ok(Math.abs(gap)<.0001);
+      for (const probe of probes) {
+        if (Math.abs(probe.x-center.x-dx)<.006 && probe.z>wheel.min.z+dz && probe.z<wheel.max.z+dz) probe.hit=true;
+      }
+    }
+    if (tick===span.start || tick===span.end) assert.ok(gap>.35 && dx===0 && dz===0);
+  }
+  assert.ok(probes.every(p=>p.hit),'grinding passes must reach the edges and center of the blank');
 });
 
 

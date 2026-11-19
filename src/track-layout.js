@@ -1,4 +1,5 @@
 import { DEMO, pointFor } from './config.js';
+import { frontFixture } from './cnc-front-transfer.js';
 
 const hubs = {
   CNC: [-14, -10], GRIND: [0, -13], WIRE: [14, -7], EDM: [14, 7],
@@ -57,7 +58,7 @@ export function makeTrackLayout(config = DEMO) {
     if (machine.type === 'CNC') {
       // The carriage stops at its center. Leave rail under the front shoes beyond that point.
       docks.push({id, zone:machine.zone, machinePosition:[machine.x,machine.z], ...frontSpur(dock,radius,cncDocks)});
-    } else if (machine.type === 'WIRE' || machine.type === 'EDM') {
+    } else if (frontFixture(machine)) {
       const [cx,cz] = hubs[machine.zone];
       docks.push({id, zone:machine.zone, machinePosition:[machine.x,machine.z],
         path:[[cx+radius,cz],dock], railEnd:[dock[0],dock[1]-.82]});

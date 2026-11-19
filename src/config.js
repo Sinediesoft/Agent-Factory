@@ -35,7 +35,7 @@ export const DEMO = Object.freeze({
     'CNC-R01': cncStation(-10.5, '粗加工 B'),
     'CNC-L02': cncStation(-23, '最終精加工'),
     'CNC-R02': cncStation(-4.8, '特徵加工'),
-    'GRIND-01': { zone: 'GRIND', x: 0, z: -16, dock: [0, -13.3], type: 'GRIND', label: '平面研磨' },
+    'GRIND-01': { zone: 'GRIND', x: 2, z: -21, dock: [2, -17], type: 'GRIND', label: '平面研磨' },
     'WIRE-01': { zone: 'WIRE', x: 16.30, z: -15.5, dock: [16, -11.5], type: 'WIRE', label: '線割' },
     'EDM-01': { zone: 'EDM', x: 16, z: -1, dock: [16, 3], type: 'EDM', label: '放電' },
   },

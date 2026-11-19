@@ -299,20 +299,65 @@ def make_edm():
     return root
 
 
+def wheel_guard(root, center):
+    # Open-bottom shroud with clearance around the spinning abrasive rim.
+    verts, faces = [], []
+    for step in range(33):
+        angle = math.pi * step / 32
+        for radius, side in [(.45,-.16),(.45,.16),(.425,.16),(.425,-.16)]:
+            verts.append((radius*math.cos(angle),side,radius*math.sin(angle)))
+        if step:
+            start = 4*(step-1)
+            for i in range(4):
+                j = (i+1)%4
+                faces.append((start+i,start+j,start+4+j,start+4+i))
+    faces.extend([(3,2,1,0),(128,129,130,131)])
+    mesh = bpy.data.meshes.new('wheel-guard')
+    mesh.from_pydata(verts,[],faces)
+    guard = bpy.data.objects.new('wheel-guard',mesh)
+    bpy.context.collection.objects.link(guard)
+    guard.parent = root
+    guard.location = center
+    mesh.materials.append(YELLOW)
+
+
 def make_grind():
-    root=empty('MachineRoot')
-    machine_base(root,3.75,3.1,3.0)
-    doors(root,2.45,1.48,-1.7)
-    cube('magnetic-chuck',(0,-.79,.96),(2.28,.96,.19),CHROME,root,.025)
-    for x in [-.8,-.4,0,.4,.8]:
-        cube('chuck-line',(x,-.8,1.07),(.025,.8,.018),BLACK,root,.005)
-    cylinder('grinding-wheel',(0,-.44,2.04),.49,.18,STEEL,root,48,(math.pi/2,0,0))
-    cylinder('wheel-center',(0,-.56,2.04),.15,.19,BLACK,root,32,(math.pi/2,0,0))
-    cube('wheel-guard',(0,-.2,2.35),(1.16,.5,.5),YELLOW,root,.12)
-    link('coolant-nozzle',(.75,.22,2.35),(.37,-.5,1.28),.035,BLACK,root)
-    panel_controls(root,1.68,-1.77,1.58)
-    status_light(root,1.5,-.6,3.24)
-    text_mesh('family','GRIND // DEMO',(-1.65,-1.75,2.64),.18,YELLOW,root)
+    root = empty('MachineRoot')
+    attach_depth_enclosure(root, 'grind')
+    cube('machine-plinth',(0,0,.16),(3.74,2.96,.30),BLACK,root,.04)
+    cube('grinder-bed',(0,-.53,1.01),(2.17,1.45,.28),STEEL,root,.04)
+    cube('magnetic-chuck',(0,-.78,1.205),(.46,1.06,.11),CHROME,root,.012)
+    for i in range(-4,5):
+        cube('chuck-line',(0,-.78+i*.105,1.259),(.44,.011,.002),BLACK,root,.001)
+
+    # A horizontal spindle carries the abrasive wheel. A contrasting hub mark shows rotation.
+    axis = (math.pi/2,0,0)
+    abrasive = material('alumina-wheel',(.47,.42,.39),.12,.86)
+    cube('grinder-column',(0,.65,1.78),(1.70,.24,1.67),STEEL,root,.035)
+    cylinder('wheel-spindle',(-.245,.295,2.22),.14,1.37,STEEL,root,40,axis)
+    cylinder('grinding-wheel',(-.245,-.50,2.22),.40,.23,abrasive,root,64,axis)
+    hub = cylinder('wheel-center',(-.245,-.64,2.22),.14,.09,STEEL,root,40,axis)
+    cube('wheel-index',(.065,0,.05),(.10,.035,.012),WHITE_TOP,hub,.004)
+    wheel_guard(root,(-.245,-.50,2.22))
+    link('coolant-nozzle',(.28,-.48,2.52),(.12,-.60,2.04),.026,BLACK,root)
+
+    door = empty('SlidingDoor',root)
+    door['stroke'] = 1.52
+    cube('door-apron',(0,-1.70,1.12),(1.68,.09,.58),YELLOW,door,.035)
+    cube('door-header',(0,-1.70,2.48),(1.68,.09,.15),YELLOW,door,.02)
+    for x in (-.78,.78):
+        cube('window-jamb',(x,-1.70,1.91),(.12,.09,1.05),YELLOW,door,.018)
+    cube('guard-glass',(0,-1.7,1.91),(1.45,.035,1.02),GLASS,door,.012)
+    cube('guard-pull',(.77,-1.80,1.67),(.065,.09,.41),BLACK,door,.016)
+    text_mesh('machine-id','GRIND-01',(-.70,-1.76,1.12),.155,BLACK,door)
+    for level in (.78,2.61):
+        cube('door-track',(-.37,-1.62,level),(3.20,.11,.08),STEEL,root,.015)
+    for x in (-1.20,1.20):
+        cube('fixed-jamb',(x,-1.59,1.69),(.71,.10,1.79),WHITE_TOP,root,.028)
+    panel_controls(root,1.50,-1.68,1.67)
+    cube('control-nameplate',(1.50,-1.81,2.81),(.69,.065,.20),YELLOW,root,.012)
+    text_mesh('control-brand','FANUC',(1.24,-1.85,2.755),.135,BLACK,root)
+    status_light(root,1.51,-.98,2.98)
     return root
 
 
@@ -368,7 +413,6 @@ def make_full_scene():
     layout = load_layout()
     exterior = load_cnc_exterior()
     coords = {d['id']: d['machinePosition'] for d in layout['docks'] if 'machinePosition' in d}
-    coords['GRIND-01'] = (0,-16)
     builders={'GRIND':make_grind,'WIRE':make_wire,'EDM':make_edm}
     for ident,(x,z) in coords.items():
         kind=ident.split('-')[0]
