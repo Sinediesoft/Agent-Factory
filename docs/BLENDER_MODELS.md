@@ -7,7 +7,8 @@
 | 檔案 | 內容 |
 | --- | --- |
 | [`agent-factory-scene.blend`](../agent-factory-scene.blend) | 可編輯的七設備、雙臂與完整九環軌道場景 |
-| [`public/models/cnc.glb`](../public/models/cnc.glb) | 四台 CNC 共用的 FANUC 風格示範外觀 |
+| [`public/models/cnc.glb`](../public/models/cnc.glb) | CNC 的主軸、工作台、治具與備援外觀 |
+| [`public/models/cnc-l01-shell.glb`](../public/models/cnc-l01-shell.glb) | 四台 CNC 共用的 Onshape 外殼、單滑門與三色燈柱 |
 | [`public/models/grind.glb`](../public/models/grind.glb) | 平面磨床示範外觀 |
 | [`public/models/wire.glb`](../public/models/wire.glb) | 線割設備示範外觀 |
 | [`public/models/edm.glb`](../public/models/edm.glb) | 放電設備示範外觀 |
@@ -23,9 +24,9 @@
 | [`tools/track-layout.json`](../tools/track-layout.json) | 從布局來源自動匯出的 Blender 輸入 |
 | [`tools/render_blender_details.py`](../tools/render_blender_details.py) | 從 `.blend` 輸出近景預覽 |
 
-網頁用 `GLTFLoader` 載入 GLB，並沿用原本的模擬事件。機台模型提供 `Door_L`、`Door_R`、`StatusRed`、`StatusYellow`、`StatusGreen` 節點；手臂模型提供 `Shoulder`、`Elbow`、`Wrist`、`ToolRough`、`ToolProtect` 節點。軌道模型提供 `Rotor_CNC` 等六個轉盤節點與 14 個 `Dock_*` 停靠端點；轉盤角度跟隨預約時段回放。模型載入失敗時保留簡化備援模型，畫面會顯示載入失敗訊息。
+網頁用 `GLTFLoader` 載入 GLB，並沿用原本的模擬事件。CNC 外殼提供 `SlidingDoor`、`StackRed`、`StackOrange`、`StackGreen`。其他機台模型提供 `Door_L`、`Door_R`、`StatusRed`、`StatusYellow`、`StatusGreen` 節點；手臂模型提供 `Shoulder`、`Elbow`、`Wrist`、`ToolRough`、`ToolProtect` 節點。軌道模型提供 `Rotor_CNC` 等六個轉盤節點與 14 個 `Dock_*` 停靠端點；轉盤角度跟隨預約時段回放。模型載入失敗時保留簡化備援模型，畫面會顯示載入失敗訊息。
 
-每台機台的三段燈柱由回放狀態控制：紅色表示異常，黃色表示加工運行中，綠色表示程式執行完畢、等待收料；閒置時燈光熄滅。`machine_faulted` 和 `machine_recovered` 事件可驅動紅燈，異常狀態會維持到解除事件。固定六件正常示範不產生異常事件；目前燈號只呈現狀態，不包含故障停機與重新排程。
+每台機台的三段燈柱由回放狀態控制：紅色表示異常，橘色表示加工運行中，綠色表示程式執行完畢、等待收料；閒置時燈光熄滅。`machine_faulted` 和 `machine_recovered` 事件可驅動紅燈，異常狀態會維持到解除事件。固定六件正常示範不產生異常事件；目前燈號只呈現狀態，不包含故障停機與重新排程。
 
 網頁監視模式使用同一份回放場景。機內視角會隔離選定機台、暫時隱藏外殼與周邊物件，將主軸／加工頭、工件及夾具放大置中。加工事件期間，模型加工頭、接觸點粒子及進度依模擬 tick 更新；暫停與跳轉時間軸會重現對應畫面。「加工動畫演示」會跳到所選機台的加工區段，播完同一工件的連續工序後暫停。機外視角從右上方 45° 依工作區設備位置自動取全景。離開監視模式後恢復所有場景物件。這是合成動畫與視覺透視效果，並非實際攝影機影像。
 

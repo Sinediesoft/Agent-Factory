@@ -1,5 +1,7 @@
 import { DEMO, secondsToTicks, ticksToSeconds, pointFor, branchFor, stationZone } from './config.js';
 
+import { makeTrackLayout, cncRailPath } from './track-layout.js';
+
 const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const hub = { CNC: [-14, -10], GRIND: [0, -13], WIRE: [14, -7], EDM: [14, 7], LOGISTICS: [0, 13], SERVICE: [-15, 7] };
 const isMachine = (id, c) => Boolean(c.stations[id]);
@@ -78,7 +80,7 @@ export class ResourceCalendar {
   }
 }
 
-export function routePhases(from, to, config = DEMO) {
+export function routePhases(from, to, config = DEMO, layout = makeTrackLayout(config)) {
   if (from === to) return [];
   const a = branchFor(from, config), b = branchFor(to, config);
   const az = stationZone(from, config), bz = stationZone(to, config);
@@ -88,7 +90,30 @@ export function routePhases(from, to, config = DEMO) {
     label, from: fromPoint, to: toPoint, resources, category,
     ticks: secondsToTicks(distance(fromPoint, toPoint) / speed + extraSeconds, config),
   });
+  const cncEntry = layout.branches.find(branch => branch.id === 'CNC').paths[0].at(-1);
+  const junction = zone => zone === 'CNC' ? cncEntry : hub[zone];
+  function cncTravel(start, end) {
+    const path = cncRailPath(layout, start, end);
+    const length = path.slice(1).reduce((sum,p,i) => sum + distance(path[i],p), 0);
+    const ring = layout.rings.find(r => r.id === 'CNC');
+    const onRing = p => Math.abs(distance(p,ring.center)-ring.radiusM)<1e-6;
+    const occupied = new Set();
+    for (let i=1; i<path.length; i++) {
+      const a=path[i-1], b=path[i];
+      if (!onRing(a) || !onRing(b)) continue;
+      const angle=Math.atan2((a[1]+b[1])/2-ring.center[1], (a[0]+b[0])/2-ring.center[0]);
+      const quadrant=Math.floor(((angle+2*Math.PI)%(2*Math.PI))/(Math.PI/2));
+      occupied.add(`ring:CNC:${quadrant}`);
+    }
+    // Only one carriage can pass through the common turnout and feeder at a time.
+    const resources = [...occupied, 'feeder:CNC'];
+    for (const id of [start,end]) if (id !== 'CNC') resources.push(`dock:${id}`);
+    return {label: `${start} → ${end} 軌道移動`, category:'travel', resources,
+      path, from:path[0], to:path.at(-1), ticks:secondsToTicks(length/speed,config),
+      cncFrom: start === 'CNC' ? null : start, cncTo: end === 'CNC' ? null : end};
+  }
   if (a === b) {
+    if (a === 'CNC') return [cncTravel(from, to)];
     const resources = a === 'LOGISTICS' ? ['branch:LOGISTICS', ringResource(from, config), ringResource(to, config)]
       : (() => {
         const slots = areaSlots[az];
@@ -104,8 +129,8 @@ export function routePhases(from, to, config = DEMO) {
   }
   const phases = [];
   const turn = config.turntable;
-  phases.push(travel(`${az} 區內環 → 出口`, p0, hub[a], [ringResource(from, config)]));
-  phases.push(travel(`${a} 支軌出區`, hub[a], config.branchPoints[a], [`branch:${a}`], turn.enterS + turn.settleS, 'branch'));
+  phases.push(a === 'CNC' ? cncTravel(from, 'CNC') : travel(`${az} 區內環 → 出口`, p0, hub[a], [ringResource(from, config)]));
+  phases.push(travel(`${a} 支軌出區`, junction(a), config.branchPoints[a], [`branch:${a}`], turn.enterS + turn.settleS, 'branch'));
   phases.push({ label: `${a} 轉盤定位與清空`, from: config.branchPoints[a], to: config.branchPoints[a],
     resources: [`branch:${a}`, `turntable:${a}`], category: 'turntable',
     ticks: secondsToTicks(turn.rotateS + turn.confirmS + turn.clearS, config) });
@@ -121,9 +146,9 @@ export function routePhases(from, to, config = DEMO) {
   phases.push({ label: `${b} 轉盤進區定位`, from: config.branchPoints[b], to: config.branchPoints[b],
     resources: [`branch:${b}`, `turntable:${b}`], category: 'turntable',
     ticks: secondsToTicks(turn.enterS + turn.settleS + turn.rotateS + turn.confirmS, config) });
-  phases.push(travel(`${b} 支軌進區並清空`, config.branchPoints[b], hub[b],
+  phases.push(travel(`${b} 支軌進區並清空`, config.branchPoints[b], junction(b),
     [`branch:${b}`], turn.clearS, 'branch'));
-  phases.push(travel(`${bz} 區內環 → 停靠`, hub[b], p1, [ringResource(to, config)]));
+  phases.push(b === 'CNC' ? cncTravel('CNC', to) : travel(`${bz} 區內環 → 停靠`, hub[b], p1, [ringResource(to, config)]));
   return phases;
 }
 
@@ -143,6 +168,7 @@ function actionsFor(id, mode, config) {
 export function buildSimulation(config = DEMO, options = {}) {
   const quantity = options.quantity ?? config.recipe.quantity;
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > config.stockCapacity.RAW) throw new Error('工單件數超出 RAW 示範容量');
+  const layout = makeTrackLayout(config);
   const calendar = new ResourceCalendar();
   const spans = [], events = [], tasks = [], agenda = [];
   const pieces = Array.from({ length: quantity }, (_, i) => ({ id: `P${String(i + 1).padStart(2, '0')}`, stage: 0, location: 'RAW', reserved: false, done: false }));
@@ -162,7 +188,7 @@ export function buildSimulation(config = DEMO, options = {}) {
     .reduce((sum, [, seconds]) => sum + secondsToTicks(seconds, config),
       secondsToTicks(config.dock.approachS + config.dock.reverseS, config));
   function scheduleRoute(arm, task, from, to, ready) {
-    const phases = routePhases(from, to, config);
+    const phases = routePhases(from, to, config, layout);
     if (!phases.length) return ready;
     const routeStart = calendar.bookRoute(phases, ready, task.id);
     addWait(ready, routeStart, arm.id, task.id, '通道 / 轉盤資源等待', task.piece);
@@ -185,7 +211,7 @@ export function buildSimulation(config = DEMO, options = {}) {
     for (const [label, seconds] of all) {
       const end = cursor + secondsToTicks(seconds, config);
       addSpan({ start: cursor, end, category: 'action', label: `${id} · ${label}`, arm: arm.id,
-        taskId: task.id, piece: task.piece, station: id, mode, resources });
+        taskId: task.id, piece: task.piece, station: id, action: label, mode, resources });
       cursor = end;
     }
     return { start, end: cursor };
@@ -247,7 +273,7 @@ export function buildSimulation(config = DEMO, options = {}) {
     const trial = calendar.clone();
     let cursor = clock, location = arm.location;
     const trialRoute = (from, to) => {
-      const phases = routePhases(from, to, config);
+      const phases = routePhases(from, to, config, layout);
       if (!phases.length) return;
       const start = trial.bookRoute(phases, cursor, `trial:${arm.id}`);
       cursor = start + phases.reduce((sum, phase) => sum + phase.ticks, 0);

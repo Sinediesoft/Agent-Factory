@@ -12,3 +12,6 @@ coverage/
 dist/
 .vscode/
 .idea/
+
+# Local ComfyUI runtime, weights, downloads and raw inference outputs
+.local-comfy/

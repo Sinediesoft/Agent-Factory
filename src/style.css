@@ -23,7 +23,7 @@ textarea{background:#fff;border-color:#b9cad7;color:#21384b}
 .route-list li{border-color:#c9d8e3;color:#526d82}
 .route-list li:before{background:#eaf5fb;border-color:#81b8d6;color:#1c6d98}
 .scene-focus{background:#fff}
-.scene-focus button{background:#f5f9fc;border-color:#cadbe7;color:#3b607b}
+.scene-focus select{font:inherit;font-size:11px;color:#294d65;background:#f5f9fc;border:1px solid #cadbe7;border-radius:5px;padding:4px 6px}.scene-focus button{background:#f5f9fc;border-color:#cadbe7;color:#3b607b}
 .scene-focus button.active{background:#dff1fa;border-color:#63b5da;color:#145b80}
 .scene-wrap{background:#fff}
 .scene-overlay{color:#254458;text-shadow:none}
@@ -48,7 +48,7 @@ textarea{background:#fff;border-color:#b9cad7;color:#21384b}
 .machine-light-legend span,.machine-status-value{display:inline-flex;align-items:center;gap:5px}
 .machine-light{display:inline-block;flex:none;width:9px;height:9px;border-radius:50%;border:1px solid #aab9c3;background:#7f929f}
 .machine-light.red{border-color:#c52c31;background:#e33434;box-shadow:0 0 5px #e334347a}
-.machine-light.yellow{border-color:#cf9700;background:#f0b400;box-shadow:0 0 5px #f0b40085}
+.machine-light.orange{border-color:#c15b09;background:#ff640a;box-shadow:0 0 5px #ff640a85}
 .machine-light.green{border-color:#149551;background:#20b968;box-shadow:0 0 5px #20b9687a}
 .machine-status-list{border-top:1px solid #dce5ec}
 .machine-status-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #e5ecf1;font-size:10px}

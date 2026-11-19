@@ -171,10 +171,24 @@ def doors(root, width=2.2, z=1.48, front=-1.76):
     return root
 
 
-def make_cnc():
-    root=empty('MachineRoot')
-    machine_base(root,3.8,3.2,3.05)
-    doors(root,2.55,1.52,-1.72)
+def load_cnc_exterior():
+    collection = bpy.data.collections.new('Onshape CNC exterior')
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=str(OUT / 'cnc-l01-shell.glb'))
+    for obj in set(bpy.data.objects) - before:
+        for parent in list(obj.users_collection):
+            parent.objects.unlink(obj)
+        collection.objects.link(obj)
+    return collection
+
+
+def attach_cnc_exterior(root, collection):
+    shell = empty('CAD exterior', root)
+    shell.instance_type = 'COLLECTION'
+    shell.instance_collection = collection
+
+
+def add_cnc_interior(root):
     cube('cross-slide', (0,-.87,.77), (2.18,1.1,.24), STEEL,root,.025)
     for x in [-.75,-.25,.25,.75]:
         cube('table-t-slot', (x,-.89,.91), (.065,.9,.025), BLACK,root,.005)
@@ -182,6 +196,13 @@ def make_cnc():
     cylinder('spindle-housing', (0,-.62,2.22), .31,.72,YELLOW,root)
     cylinder('spindle-chuck', (0,-.62,1.78), .15,.22,CHROME,root)
     cylinder('cutting-tool', (0,-.62,1.53), .045,.38,STEEL,root)
+
+
+def make_cnc():
+    root=empty('MachineRoot')
+    machine_base(root,3.8,3.2,3.05)
+    doors(root,2.55,1.52,-1.72)
+    add_cnc_interior(root)
     panel_controls(root,1.69,-1.8,1.59)
     status_light(root,1.55,-.75,3.28)
     text_mesh('brand', 'FANUC',(-1.66,-1.77,2.68),.24,YELLOW,root)
@@ -245,7 +266,7 @@ def make_robot():
     root=empty('RobotRoot')
     cube('rail-carriage',(0,0,2.54),(1.55,1.25,.26),BLACK,root,.09)
     for x in [-.54,.54]:
-        for y in [-.43,.43]:
+        for y in [-.29,.29]:
             cube('rail-shoe',(x,y,2.38),(.26,.22,.12),STEEL,root,.025)
     cylinder('turntable',(0,0,2.77),.52,.28,STEEL,root,32)
     cylinder('rotary-waist',(0,0,3.03),.43,.43,YELLOW,root,32)
@@ -270,7 +291,7 @@ def make_robot():
         cube('protect-jaw',(.35,y,-.03),(.42,.12,.24),PAD,tool_protect,.025)
     link('external-cable',(-.22,.24,3.0),(.54,.24,3.61),.035,BLACK,root)
     text_mesh('arm-brand','FANUC',(-.12,-.27,3.01),.11,BLACK,root)
-    assembly=empty('RobotAssembly',root,(0,0,-2.2))
+    assembly=empty('RobotAssembly',root,(0,0,-2.055))
     for obj in list(bpy.data.objects):
         if obj.parent == root and obj != assembly:
             obj.parent=assembly
@@ -290,17 +311,24 @@ def make_full_scene():
     reset()
     floor=material('floor',(.07,.12,.18),.13,.81)
     cube('floor',(0,0,-.09),(65,50,.18),floor,None,.04)
-    coords={'CNC-L01':(-17,-13),'CNC-R01':(-12,-14),'CNC-L02':(-17,-8),
-            'CNC-R02':(-12,-9),'GRIND-01':(0,-16),'WIRE-01':(17,-7),'EDM-01':(17,7)}
-    builders={'CNC':make_cnc,'GRIND':make_grind,'WIRE':make_wire,'EDM':make_edm}
+    layout = load_layout()
+    exterior = load_cnc_exterior()
+    coords = {d['id']: d['machinePosition'] for d in layout['docks'] if 'machinePosition' in d}
+    coords.update({'GRIND-01':(0,-16),'WIRE-01':(17,-7),'EDM-01':(17,7)})
+    builders={'GRIND':make_grind,'WIRE':make_wire,'EDM':make_edm}
     for ident,(x,z) in coords.items():
         kind=ident.split('-')[0]
-        root=builders[kind]()
+        if kind == 'CNC':
+            root = empty(ident)
+            add_cnc_interior(root)
+            attach_cnc_exterior(root, exterior)
+        else:
+            root=builders[kind]()
         root.name=ident
         root.location=(x,-z,0)
     for ident,x,z in [('R1',-20,5),('R2',-20,8)]:
         root=make_robot();root.name=ident;root.location=(x,-z,0)
-    make_track_network(load_layout())
+    make_track_network(layout)
     for ident,x,z in [('RAW',-5,16),('WIP',0,17),('FG',5,16)]:
         cube(ident,(x,-z,.4),(3.5,2.2,.8),STEEL,None,.06)
     # Camera and preview: still image is evidence of mesh layout, not collision validation.

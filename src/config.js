@@ -1,4 +1,8 @@
 // All dimensions and non-cutting times are synthetic demonstration values.
+const cncStation = (x, label) => ({
+  zone: 'CNC', type: 'CNC', label, x, z: -19, dock: [x + .16, -14.95],
+});
+
 export const DEMO = Object.freeze({
   kind: 'synthetic_demo',
   version: 'mvp-0.1',
@@ -27,10 +31,10 @@ export const DEMO = Object.freeze({
     EDM: [11, 7], LOGISTICS: [0, 10], SERVICE: [-11, 7],
   },
   stations: {
-    'CNC-L01': { zone: 'CNC', x: -17, z: -13, dock: [-15, -11.1], type: 'CNC', label: '粗加工 A' },
-    'CNC-R01': { zone: 'CNC', x: -12, z: -14, dock: [-12, -11.3], type: 'CNC', label: '粗加工 B' },
-    'CNC-L02': { zone: 'CNC', x: -17, z: -8, dock: [-14.8, -6.4], type: 'CNC', label: '最終精加工' },
-    'CNC-R02': { zone: 'CNC', x: -12, z: -9, dock: [-14.2, -8.5], type: 'CNC', label: '特徵加工' },
+    'CNC-L01': cncStation(-17, '粗加工 A'),
+    'CNC-R01': cncStation(-10.5, '粗加工 B'),
+    'CNC-L02': cncStation(-23, '最終精加工'),
+    'CNC-R02': cncStation(-4.8, '特徵加工'),
     'GRIND-01': { zone: 'GRIND', x: 0, z: -16, dock: [0, -13.3], type: 'GRIND', label: '平面研磨' },
     'WIRE-01': { zone: 'WIRE', x: 17, z: -7, dock: [14.3, -7], type: 'WIRE', label: '線割' },
     'EDM-01': { zone: 'EDM', x: 17, z: 7, dock: [14.3, 7], type: 'EDM', label: '放電' },

@@ -19,7 +19,7 @@ camera=scene.camera
 camera.data.type='ORTHO'
 
 for name,position,target,scale in [
-    ('agent-factory-cnc-detail.png',(-5,0,12),(-14.5,11,1.3),18),
+    ('agent-factory-cnc-detail.png',(-20,-6,16),(-14,16.5,1.2),26),
     ('agent-factory-robot-detail.png',(-8,-19,10),(-18,-6.5,2.7),15),
     ('agent-factory-track-detail.png',(22,-1,17),(11,7,.4),18),
 ]:
