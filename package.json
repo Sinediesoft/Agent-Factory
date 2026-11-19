@@ -1,0 +1,15 @@
+{
+  "name": "agent-factory",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Agent Factory synthetic seven-machine, two-arm MVP simulator and legacy 2D baseline",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --test tests/*.test.js && node test-demo.cjs"
+  },
+  "dependencies": { "three": "^0.181.0" },
+  "devDependencies": { "vite": "^7.2.2" }
+}
