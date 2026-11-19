@@ -5,7 +5,7 @@ import { DEMO, ticksToSeconds } from './config.js';
 import { makeTrackLayout, validateTrackLayout } from './track-layout.js';
 import { buildSimulation, validateSimulation } from './sim.js';
 import { stateAt, PlaybackClock } from './playback.js';
-import { machineLampState, machineStatusText } from './machine-status.js';
+import { machineLampState, machineStatusText, updateMachineLamp } from './machine-status.js';
 import { monitorAreas, monitorAreaPose, monitorInteriorPose, monitorTarget } from './monitor.js';
 import { machiningCycle, machiningFrame } from './machining-animation.js';
 
@@ -268,33 +268,15 @@ function addLampPickTarget(parent,id,center){
   parent.add(pick);lampPickTargets.push(pick);
   return pick;
 }
-const lampColors={red:0xe33434,yellow:0xf0b400,green:0x20b968};
 function makeFallbackLamp(x,z){
   const group=new THREE.Group();group.position.set(x,3.03,z);
-  for(const [name,height] of [['green',.13],['yellow',.34],['red',.55]]){
+  for(const [name,height] of [['green',.13],['orange',.34],['red',.55]]){
     const lens=new THREE.Mesh(new THREE.CylinderGeometry(.21,.21,.19,20),
       new THREE.MeshStandardMaterial({color:0x45535c,emissive:0x000000,roughness:.25}));
     lens.name=`Status${name[0].toUpperCase()}${name.slice(1)}`;lens.position.y=height;group.add(lens);
   }
   modelRoot.add(group);
-  return {group,lamps:Object.fromEntries(['red','yellow','green'].map(name=>[name,group.getObjectByName(`Status${name[0].toUpperCase()}${name.slice(1)}`)]))};
-}
-function updateMachineLamp(lamps,status){
-  const active=machineLampState(status);
-  if(lamps.beacon){
-    const lens=lamps.beacon.material;
-    lens.color.setHex(active ? lampColors[active] : 0xa52424);
-    lens.emissive.setHex(active ? lampColors[active] : 0x000000);
-    lens.emissiveIntensity=active ? .75 : 0;
-    return;
-  }
-  for(const [name,mesh] of Object.entries(lamps)){
-    if(!mesh)continue;
-    const lit=name===active;
-    mesh.material.color.setHex(lit?lampColors[name]:0x25343d);
-    mesh.material.emissive.setHex(lit?lampColors[name]:0x000000);
-    mesh.material.emissiveIntensity=lit ? 0.75 : 0;
-  }
+  return {group,lamps:Object.fromEntries(['red','orange','green'].map(name=>[name,group.getObjectByName(`Status${name[0].toUpperCase()}${name.slice(1)}`)]))};
 }
 for(const [id,m] of Object.entries(DEMO.stations)) {
   const body=box(m.type==='CNC'?3.5:3.8,2.7,m.type==='CNC'?3:3.3,0x3a596b,m.x,1.35,m.z);
@@ -354,16 +336,26 @@ async function installCadShell(group) {
 function installRobodrillExterior(group, shell) {
   const door = shell.getObjectByName('SlidingDoor');
   const doorPanel = shell.getObjectByName('DoorPanel');
-  const beacon = shell.getObjectByName('BeaconLens');
-  if (!door || !doorPanel || !beacon?.isMesh) throw new Error('Incomplete CNC exterior');
-  // The STEP shares red paint between the beacon, lettering and emergency stop.
-  beacon.material = beacon.material.clone();
+  const lamps = {
+    red: shell.getObjectByName('StackRed'),
+    orange: shell.getObjectByName('StackOrange'),
+    green: shell.getObjectByName('StackGreen'),
+  };
+  const hasStack = Object.values(lamps).some(Boolean);
+  const lenses = hasStack ? lamps : {beacon: shell.getObjectByName('BeaconLens')};
+  if (!door || !doorPanel || Object.values(lenses).some(mesh => !mesh?.isMesh)) {
+    throw new Error('Incomplete CNC exterior');
+  }
+  // STEP paint can also be shared by the emergency stop and lettering.
+  for (const mesh of Object.values(lenses)) mesh.material = mesh.material.clone();
   const machine = machineMeshes[shellStationId];
   const panelSize = new THREE.Box3().setFromObject(doorPanel).getSize(new THREE.Vector3());
   machine.slidingDoor = door;
   machine.doorStroke = panelSize.x - .120;
-  machine.lamps = {beacon};
-  machine.lampPick.position.copy(new THREE.Box3().setFromObject(beacon).getCenter(new THREE.Vector3()));
+  machine.lamps = lenses;
+  const middle = hasStack ? lamps.orange : lenses.beacon;
+  machine.lampPick.position.copy(new THREE.Box3().setFromObject(middle).getCenter(new THREE.Vector3()));
+  if (hasStack) machine.lampPick.scale.setScalar(.5);
   const original = group.getObjectByName('MachineRoot');
   for (const part of [...original.children]) {
     if (!/^(cross-slide|table-t-slot|work-fixture|spindle-housing|spindle-chuck|cutting-tool)/.test(part.name)) {
@@ -447,7 +439,7 @@ Promise.all([...Object.values(modelFiles),'robot','track'].map(name=>loadModel(`
       const lampCenter=yellowLamp?group.worldToLocal(yellowLamp.getWorldPosition(new THREE.Vector3()))
         :new THREE.Vector3(1.5,3.65,.7);
       machineMeshes[id]={group,doorL,doorR,closedL:doorL?.position.x,closedR:doorR?.position.x,
-        lamps:Object.fromEntries(['red','yellow','green'].map(name=>[name,group.getObjectByName(`Status${name[0].toUpperCase()}${name.slice(1)}`)])),
+        lamps:{red:group.getObjectByName('StatusRed'),orange:yellowLamp,green:group.getObjectByName('StatusGreen')},
         lampPick:addLampPickTarget(group,id,lampCenter),machining:attachMachiningAnimation(group,m.type)};
       if (id === shellStationId) installCadShell(group).catch(error => {
         console.error('CNC-L01 shell load failed', error);

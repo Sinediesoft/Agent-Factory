@@ -66,7 +66,9 @@ def create_assembly(records):
         parts[name] = solid
         target = sliding if name in DOOR_PARTS else exterior
         target.add(solid, name=name, color=paint)
-    if not DOOR_PARTS.issubset(parts) or "Cabinet" not in parts or "BeaconLens" not in parts:
+    lenses = {"StackRed", "StackOrange", "StackGreen"}
+    has_lamp = lenses.issubset(parts) if lenses.intersection(parts) else "BeaconLens" in parts
+    if not DOOR_PARTS.issubset(parts) or "Cabinet" not in parts or not has_lamp:
         raise ValueError("Export the complete ROBODRILL exterior Part Studio")
     exterior.add(sliding)
     # An enclosing box swept along X covers every intermediate pose of each moving part.

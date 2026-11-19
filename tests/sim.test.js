@@ -128,11 +128,11 @@ test('playback pause remains paused after seek and state matches final stock', (
   assert.equal(clock.playing, false);
 });
 
-test('machine lamps show yellow while running, green until pickup, and red on a fault', () => {
+test('machine lamps show orange while running, green until pickup, and red on a fault', () => {
   const result = buildSimulation();
   const started = result.events.find(event => event.type === 'process_started');
   const completed = result.events.find(event => event.type === 'process_completed' && event.machine === started.machine);
-  assert.equal(machineLampState(stateAt(result, started.tick).machines[started.machine].status), 'yellow');
+  assert.equal(machineLampState(stateAt(result, started.tick).machines[started.machine].status), 'orange');
   assert.equal(machineLampState(stateAt(result, completed.tick).machines[completed.machine].status), 'green');
   assert.equal(machineStatusText('ready'), '程式完成・等待收料');
   const faultEvents = [...result.events, { tick: 1, type: 'machine_faulted', machine: 'EDM-01' },

@@ -216,7 +216,25 @@ export const cncEnclosure = defineFeature(function(context is Context, id is Id,
         printedLegend(context,id+"brand",-x+124,f,2775,83,"FANUC",RED);
         printedLegend(context,id+"family",-x+125,f,2708,48,"ROBODRILL",BLACK);
         printedLegend(context,id+"model",-x+126,f,2656,31,"D21MiB5 Plus",GRAPHITE);
-        finish(context,roundPart(context,id+"lampBase",vector(350,f+0.67*(rear-f),3280),vector(350,f+0.67*(rear-f),3348),100),"BeaconBase",BLACK);
-        finish(context,roundPart(context,id+"lens",vector(350,f+0.67*(rear-f),3348),vector(350,f+0.67*(rear-f),3440),92),"BeaconLens",RED);
+        // The mast sits on the front header directly above the right edge of the console.
+        const towerX = x - 120;
+        const towerY = f + 110;
+        const tiers = [
+            ["StackBase", 3320, 3350, 78, BLACK],
+            ["StackMast", 3350, 3500, 29, color(0.62,0.64,0.65)],
+            ["StackHousing", 3500, 3525, 77, GRAPHITE],
+            ["StackGreen", 3525, 3612, 74, color(0.08,0.64,0.31)],
+            ["StackRingLower", 3612, 3620, 76, GRAPHITE],
+            ["StackOrange", 3620, 3707, 74, color(1.0,0.45,0.045)],
+            ["StackRingUpper", 3707, 3715, 76, GRAPHITE],
+            ["StackRed", 3715, 3802, 74, RED],
+            ["StackCap", 3802, 3817, 77, BLACK]
+        ];
+        for (var tier in tiers)
+        {
+            const body = roundPart(context, id + tier[0], vector(towerX,towerY,tier[1]),
+                                   vector(towerX,towerY,tier[2]), tier[3]);
+            finish(context, body, tier[0], tier[4]);
+        }
     }, { "cabinetWidth" : 2920 * millimeter, "cabinetDepth" : 2660 * millimeter,
          "portWidth" : 1110 * millimeter, "wallStock" : 60 * millimeter });
