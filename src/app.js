@@ -9,6 +9,8 @@ import { machineLampState, machineStatusText, updateMachineLamp } from './machin
 import { monitorAreas, monitorAreaPose, monitorInteriorPose, monitorTarget } from './monitor.js';
 import { machiningCycle, machiningFrame } from './machining-animation.js';
 
+import { frontStation, frontTransferPose, poseFrontRobot, gripOffset, fixtureHeight } from './cnc-front-transfer.js';
+
 const $ = id => document.getElementById(id);
 const sim = buildSimulation();
 const errors = validateSimulation(sim);
@@ -253,7 +255,7 @@ function line(points,color,width=0.12,y=DEMO.railHeightM) {
 line(trackLayout.main.path,0x48aff0,.24);
 for(const ring of trackLayout.rings)line(ring.path,0x9585df,.08);
 for(const branch of trackLayout.branches)for(const path of branch.paths)line(path,0xe5b767,.12);
-for(const dock of trackLayout.docks)line(dock.path,0x60a9a4,.08);
+for(const dock of trackLayout.docks)line(dock.railEnd ? [...dock.path,dock.railEnd] : dock.path,0x60a9a4,.08);
 for(const branch of DEMO.branchOrder) {
   const turn=new THREE.Mesh(new THREE.CylinderGeometry(DEMO.turntable.radiusM,DEMO.turntable.radiusM,.2,32),new THREE.MeshStandardMaterial({color:0x5b7390,metalness:.6,roughness:.35}));
   turn.position.set(DEMO.branchPoints[branch][0],DEMO.railHeightM-.12,DEMO.branchPoints[branch][1]);fallbackTrack.add(turn);
@@ -308,7 +310,7 @@ for(const [id,color] of [['R1',0x60d4fa],['R2',0xf8bd70]]) {
 }
 const gltfLoader=new GLTFLoader();
 const loadModel=url=>new Promise((resolve,reject)=>gltfLoader.load(url,resolve,undefined,reject));
-const shellStationId = 'CNC-L01';
+const shellStationId = frontStation;
 async function installCadShell(group) {
   const {scene: shell} = await loadModel('/models/cnc-l01-shell.glb');
   shell.name = 'CadShell';
@@ -374,13 +376,14 @@ $('cnc-shell-demo').addEventListener('click', () => {
   document.querySelector('[data-focus="all"]').click();
   shellTrialView = true;
   applyMonitorCutaway();
-  controls.target.set(station.x + .1, 1.6, station.z + .45).multiplyScalar(modelScale);
-  camera.position.copy(controls.target).add(new THREE.Vector3(2.7, 2.2, 6.6).multiplyScalar(modelScale));
+  controls.target.set(station.x + .05, 1.52, station.z + 1.95).multiplyScalar(modelScale);
+  camera.position.copy(controls.target).add(new THREE.Vector3(-6.8, 2.9, 6.2).multiplyScalar(modelScale));
   controls.update();
   setFocusButton($('cnc-shell-demo'));
   document.querySelector('.scene-overlay span:first-child').textContent =
     [shellStationId, machineMeshes[shellStationId].slidingDoor ? 'ROBODRILL' : 'CAD 外殼', loading.piece].join(' · ');
-  playback.seek(loading.start);
+  const arrival = sim.spans.find(span => span.taskId === loading.taskId && span.frontRail === 'enter');
+  playback.seek(arrival ? Math.max(arrival.start, loading.start - 50) : loading.start);
   playback.rate = 30;
   $('speed-select').value = '30';
   demoStopTick = unloading.tick;
@@ -454,7 +457,9 @@ Promise.all([...Object.values(modelFiles),'robot','track'].map(name=>loadModel(`
       modelRoot.remove(previous.group);modelRoot.add(group);
       armMeshes[id]={group,shoulder:group.getObjectByName('Shoulder'),elbow:group.getObjectByName('Elbow'),
         wrist:group.getObjectByName('Wrist'),toolRough:group.getObjectByName('ToolRough'),
-        toolProtect:group.getObjectByName('ToolProtect')};
+        toolProtect:group.getObjectByName('ToolProtect'),
+        jaws:group.getObjectsByProperty('isMesh',true).filter(mesh=>/^(rough|protect)-jaw/.test(mesh.name))};
+      for (const jaw of armMeshes[id].jaws) jaw.userData.restZ=jaw.position.z;
     }
     document.querySelector('.scene-overlay span:first-child').textContent=monitorMode
       ?monitorOverlayText():'Blender 3D · 點機台狀態燈看機內 · 拖曳旋轉 · 滾輪縮放';
@@ -542,20 +547,34 @@ function updateScene(state){
   for(const [id,arm] of Object.entries(state.arms)){
     const obj=armMeshes[id];obj.group.position.set(arm.position[0],0,arm.position[1]);
     const target=DEMO.stations[arm.activeStation]||DEMO.stores[arm.activeStation];
-    if(target){const angle=-Math.atan2(target.z-arm.position[1],target.x-arm.position[0]);
-      obj.group.rotation.y=THREE.MathUtils.lerp(obj.group.rotation.y,angle,.12);}
+    if (arm.frontRailYaw != null && obj.wrist) {
+      const carrying=Object.values(state.pieces).some(p=>p.carriedBy===id);
+      const pose=arm.frontPose ?? frontTransferPose(DEMO.stations[frontStation],null,carrying?'place':'pick',0);
+      poseFrontRobot(obj,arm.frontRailYaw,pose);
+    } else {
+      if (obj.shoulder) {
+        obj.shoulder.rotation.z=obj.elbow.rotation.z=obj.wrist.rotation.z=0;
+        for (const jaw of obj.jaws) jaw.position.z=jaw.userData.restZ;
+      }
+      if(target){
+        const angle=-Math.atan2(target.z-arm.position[1],target.x-arm.position[0]);
+        obj.group.rotation.y=THREE.MathUtils.lerp(obj.group.rotation.y,angle,.12);
+      }
+      if(obj.shoulder){
+        const working=arm.status==='action';
+        obj.shoulder.rotation.y=THREE.MathUtils.lerp(obj.shoulder.rotation.y,working?-.35:0,.09);
+        obj.elbow.rotation.y=THREE.MathUtils.lerp(obj.elbow.rotation.y,working ? .45 : -.12,.09);
+        obj.wrist.rotation.y=THREE.MathUtils.lerp(obj.wrist.rotation.y,working ? .15 : 0,.09);
+      }
+    }
     if(obj.claw)obj.claw.material.color.set(arm.tool?.includes('PROTECT')?0xa8e5c7:0xe9d9a6);
     if(obj.toolRough)obj.toolRough.visible=Boolean(arm.tool?.includes('ROUGH'));
     if(obj.toolProtect)obj.toolProtect.visible=Boolean(arm.tool?.includes('PROTECT'));
-    if(obj.shoulder){const working=arm.status==='action';
-      obj.shoulder.rotation.y=THREE.MathUtils.lerp(obj.shoulder.rotation.y,working?-.35:0,.09);
-      obj.elbow.rotation.y=THREE.MathUtils.lerp(obj.elbow.rotation.y,working ? .45 : -.12,.09);
-      obj.wrist.rotation.y=THREE.MathUtils.lerp(obj.wrist.rotation.y,working ? .15 : 0,.09);}
   }
   for(const [id,m] of Object.entries(state.machines)){
     const obj=machineMeshes[id];
     if(obj.slidingDoor){
-      obj.slidingDoor.position.x=THREE.MathUtils.lerp(obj.slidingDoor.position.x,m.doorOpen ? -obj.doorStroke : 0,.15);
+      obj.slidingDoor.position.x=-obj.doorStroke*(m.doorFraction ?? Number(m.doorOpen));
     }else if(obj.doorL){obj.doorL.position.x=THREE.MathUtils.lerp(obj.doorL.position.x,obj.closedL+(m.doorOpen?-.55:0),.15);
       obj.doorR.position.x=THREE.MathUtils.lerp(obj.doorR.position.x,obj.closedR+(m.doorOpen ? .55 : 0),.15);}
     else obj.door.position.y=m.doorOpen?1.8:.95;
@@ -589,13 +608,22 @@ function updateScene(state){
   for(const [id,p] of Object.entries(state.pieces)){
     const mesh=workpieceMeshes[id];
     mesh.visible=!monitorMode||monitorView!=='inside'||(p.location===monitorTargetSelect.value&&!p.carriedBy);
+    mesh.rotation.y=0;
     if(p.carriedBy){const obj=armMeshes[p.carriedBy];
-      if(obj.wrist){obj.wrist.getWorldPosition(mesh.position);modelRoot.worldToLocal(mesh.position);mesh.position.y-=.25;}
+      if(obj.wrist && state.arms[p.carriedBy].frontRailYaw != null){
+        mesh.position.set(gripOffset.forward,gripOffset.height,0);
+        obj.wrist.localToWorld(mesh.position);modelRoot.worldToLocal(mesh.position);mesh.rotation.y=Math.PI/2;
+      }
+      else if(obj.wrist){obj.wrist.getWorldPosition(mesh.position);modelRoot.worldToLocal(mesh.position);mesh.position.y-=.25;}
       else {const a=obj.group.position;mesh.position.set(a.x+1.7,DEMO.railHeightM+1.5,a.z);}}
     else if(DEMO.stations[p.location]){
       const s=DEMO.stations[p.location];
       const fixture={CNC:[1.205,.87],GRIND:[1.145,.79],WIRE:[1.35,.67],EDM:[1.455,.7]}[s.type];
       mesh.position.set(s.x,fixture[0],s.z+fixture[1]);
+      if (p.location===frontStation) {
+        mesh.position.set(s.dock[0],fixtureHeight,s.z+.87);
+        mesh.rotation.y=Math.PI/2;
+      }
     }
     else {const s=DEMO.stores[p.location];const index=Number(id.slice(1))-1;mesh.position.set(s.x-1.25+(index%3)*1.25,.84,s.z-.47+Math.floor(index/3)*.9);}
     mesh.material.color.set(p.done?0x8bd5ad:p.stage>=2?0xc2d9ee:0xc6a982);

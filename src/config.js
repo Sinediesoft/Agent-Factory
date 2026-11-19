@@ -27,7 +27,7 @@ export const DEMO = Object.freeze({
     EDM: [11, 7], LOGISTICS: [0, 10], SERVICE: [-11, 7],
   },
   stations: {
-    'CNC-L01': { zone: 'CNC', x: -17, z: -13, dock: [-15, -11.1], type: 'CNC', label: '粗加工 A' },
+    'CNC-L01': { zone: 'CNC', x: -17, z: -19, dock: [-16.84, -14.95], type: 'CNC', label: '粗加工 A' },
     'CNC-R01': { zone: 'CNC', x: -12, z: -14, dock: [-12, -11.3], type: 'CNC', label: '粗加工 B' },
     'CNC-L02': { zone: 'CNC', x: -17, z: -8, dock: [-14.8, -6.4], type: 'CNC', label: '最終精加工' },
     'CNC-R02': { zone: 'CNC', x: -12, z: -9, dock: [-14.2, -8.5], type: 'CNC', label: '特徵加工' },

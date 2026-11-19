@@ -14,6 +14,20 @@ const circle = (center, radius, sides = 48) => Array.from({ length: sides + 1 },
   return [center[0] + radius * Math.cos(a), center[1] + radius * Math.sin(a)];
 });
 
+// A tangent turnout from the south side of the CNC ring feeds the front-loading spur.
+function frontSpur(dock, radius) {
+  const [cx, cz] = hubs.CNC;
+  const leadZ = cz - radius;
+  const bend = 1.20;
+  const path = [[cx, leadZ]];
+  for (let n = 0; n <= 12; n++) {
+    const angle = n * Math.PI / 24;
+    path.push([dock[0] + bend - bend * Math.sin(angle), leadZ - bend + bend * Math.cos(angle)]);
+  }
+  path.push(dock);
+  return path;
+}
+
 export function makeTrackLayout(config = DEMO) {
   const radius = config.sharedArcRadiusM;
   const ring = Object.fromEntries(Object.entries(hubs).map(([zone, center]) => [zone, {
@@ -37,7 +51,12 @@ export function makeTrackLayout(config = DEMO) {
   const docks = [];
   for (const [id, machine] of Object.entries(config.stations)) {
     const dock = pointFor(id, config);
-    docks.push({ id, zone: machine.zone, path: [near(hubs[machine.zone], dock, radius), dock] });
+    if (id === 'CNC-L01') {
+      // The carriage stops at its center. Leave rail under the front shoes beyond that point.
+      docks.push({id, zone:machine.zone, path:frontSpur(dock,radius), railEnd:[dock[0],dock[1]-.82]});
+    } else {
+      docks.push({id, zone:machine.zone, path:[near(hubs[machine.zone],dock,radius),dock]});
+    }
   }
   for (const id of ['RAW', 'WIP', 'FG']) {
     const dock = pointFor(id, config);
@@ -83,4 +102,25 @@ export function validateTrackLayout(layout, config = DEMO) {
   }
   if (layout.railHeightM !== config.railHeightM) errors.push('Rail height differs');
   return errors;
+}
+
+// Follow the same polygonal rails that Blender exports, including both dock spurs.
+export function cncRailPath(layout, from, to) {
+  const ring = layout.rings.find(item => item.id === 'CNC');
+  const spur = id => id === 'CNC'
+    ? [layout.branches.find(item => item.id === 'CNC').paths[0].at(-1)]
+    : layout.docks.find(item => item.id === id).path;
+  const depart = [...spur(from)].reverse(), arrive = spur(to);
+  const angle = p => Math.atan2(p[1] - ring.center[1], p[0] - ring.center[0]);
+  const start = angle(depart.at(-1)), end = angle(arrive[0]);
+  const turn = 2*Math.PI;
+  const positive = radians => (radians+turn)%turn;
+  const delta = from !== 'CNC' && to !== 'CNC' ? positive(end-start)
+    : Math.atan2(Math.sin(end-start), Math.cos(end-start));
+  const vertices = ring.path.slice(0,-1).map(p => {
+    const a = angle(p)-start;
+    return {p, distance:positive(Math.sign(delta)*a)};
+  }).filter(v => v.distance > 1e-7 && v.distance < Math.abs(delta)-1e-7)
+    .sort((a,b) => a.distance-b.distance);
+  return [...depart, ...vertices.map(v => v.p), ...arrive];
 }

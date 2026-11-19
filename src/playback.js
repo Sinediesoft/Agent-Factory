@@ -1,5 +1,7 @@
 import { DEMO, pointFor } from './config.js';
 
+import { frontStation, frontTransferPose, railSample } from './cnc-front-transfer.js';
+
 export function stateAt(sim, tick) {
   const config = sim.config || DEMO;
   const quantity = sim.options.quantity ?? config.recipe.quantity;
@@ -48,17 +50,32 @@ export function stateAt(sim, tick) {
     if (!span.arm) continue;
     const arm = arms[span.arm];
     if (span.from && span.to) {
-      if (tick >= span.end) arm.position = span.to;
-      else {
-        const f = Math.max(0, (tick - span.start) / (span.end - span.start));
-        arm.position = [span.from[0] + (span.to[0] - span.from[0]) * f,
-          span.from[1] + (span.to[1] - span.from[1]) * f];
+      const fraction = Math.min(1,(tick-span.start)/(span.end-span.start));
+      if (span.path) {
+        const sample = railSample(span.path,fraction);
+        arm.position = sample.point;
+        const onFrontRail = span.frontRail === 'enter' || (span.frontRail === 'exit' && tick < span.end);
+        arm.frontRailYaw = onFrontRail ? sample.yaw + (span.frontRail === 'exit' ? Math.PI : 0) : null;
+      } else {
+        arm.frontRailYaw = null;
+        arm.position = [span.from[0]+(span.to[0]-span.from[0])*fraction,
+                        span.from[1]+(span.to[1]-span.from[1])*fraction];
       }
     }
     if (span.start <= tick && tick < span.end) {
       arm.status = span.category;
       arm.activeLabel = span.label;
       arm.activeStation = span.station || null;
+      if (span.station === frontStation && span.category === 'action') {
+        const action = span.action ?? span.label.split(' · ').at(-1);
+        const pose = frontTransferPose(config.stations[frontStation],action,span.mode,(tick-span.start)/(span.end-span.start));
+        arm.frontPose = pose;
+        arm.frontRailYaw = Math.PI/2;
+        machines[frontStation].doorFraction = pose.door;
+        // The gripper hands off at the fixture; task confirmation follows once the carriage can leave.
+        piece[span.piece].location = pose.onFixture ? frontStation : null;
+        piece[span.piece].carriedBy = pose.onFixture ? null : span.arm;
+      }
     }
   }
   for (const machine of Object.values(machines)) if (machine.faulted) machine.status = 'fault';

@@ -245,7 +245,7 @@ def make_robot():
     root=empty('RobotRoot')
     cube('rail-carriage',(0,0,2.54),(1.55,1.25,.26),BLACK,root,.09)
     for x in [-.54,.54]:
-        for y in [-.43,.43]:
+        for y in [-.29,.29]:
             cube('rail-shoe',(x,y,2.38),(.26,.22,.12),STEEL,root,.025)
     cylinder('turntable',(0,0,2.77),.52,.28,STEEL,root,32)
     cylinder('rotary-waist',(0,0,3.03),.43,.43,YELLOW,root,32)
@@ -270,7 +270,7 @@ def make_robot():
         cube('protect-jaw',(.35,y,-.03),(.42,.12,.24),PAD,tool_protect,.025)
     link('external-cable',(-.22,.24,3.0),(.54,.24,3.61),.035,BLACK,root)
     text_mesh('arm-brand','FANUC',(-.12,-.27,3.01),.11,BLACK,root)
-    assembly=empty('RobotAssembly',root,(0,0,-2.2))
+    assembly=empty('RobotAssembly',root,(0,0,-2.055))
     for obj in list(bpy.data.objects):
         if obj.parent == root and obj != assembly:
             obj.parent=assembly
@@ -290,7 +290,7 @@ def make_full_scene():
     reset()
     floor=material('floor',(.07,.12,.18),.13,.81)
     cube('floor',(0,0,-.09),(65,50,.18),floor,None,.04)
-    coords={'CNC-L01':(-17,-13),'CNC-R01':(-12,-14),'CNC-L02':(-17,-8),
+    coords={'CNC-L01':(-17,-19),'CNC-R01':(-12,-14),'CNC-L02':(-17,-8),
             'CNC-R02':(-12,-9),'GRIND-01':(0,-16),'WIRE-01':(17,-7),'EDM-01':(17,7)}
     builders={'CNC':make_cnc,'GRIND':make_grind,'WIRE':make_wire,'EDM':make_edm}
     for ident,(x,z) in coords.items():
