@@ -2,7 +2,7 @@ import { DEMO } from './config.js';
 
 export function monitorAreas(config = DEMO) {
   return [
-    { id: 'CNC', label: 'CNC 加工區', targets: Object.keys(config.stations).filter(id => config.stations[id].zone === 'CNC') },
+    { id: 'CNC', label: 'CNC／品檢區', targets: Object.keys(config.stations).filter(id => config.stations[id].zone === 'CNC') },
     { id: 'GRIND', label: '研磨區', targets: Object.keys(config.stations).filter(id => config.stations[id].zone === 'GRIND') },
     { id: 'WIRE', label: '線割區', targets: Object.keys(config.stations).filter(id => config.stations[id].zone === 'WIRE') },
     { id: 'EDM', label: '放電區', targets: Object.keys(config.stations).filter(id => config.stations[id].zone === 'EDM') },

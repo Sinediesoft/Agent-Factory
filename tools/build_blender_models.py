@@ -361,6 +361,46 @@ def make_grind():
     return root
 
 
+def make_cmm():
+    root = empty('MachineRoot')
+    attach_depth_enclosure(root, 'cmm')
+    granite = material('cmm-granite', (.22, .26, .29), .12, .32)
+    ruby = material('cmm-ruby-probe', (.72, .08, .16), .16, .2)
+    cube('cmm-plinth', (0, 0, .16), (3.78, 2.94, .30), BLACK, root, .04)
+    cube('cmm-granite-bed', (0, -.47, 1.04), (2.55, 1.76, .30), granite, root, .018)
+    for x in (-1.12, 1.12):
+        cube('cmm-y-rail', (x, -.43, 1.22), (.10, 1.55, .08), CHROME, root, .008)
+    cube('cmm-fixture', (0, -.78, 1.225), (.60, .96, .07), CHROME, root, .008)
+
+    # The bridge and stylus are separate nodes so the simulation can replay
+    # a repeatable non-cutting inspection path around the parked workpiece.
+    cube('cmm-bridge', (0, .35, 2.53), (2.67, .26, .31), WHITE_TOP, root, .032)
+    for x in (-1.21, 1.21):
+        cube('cmm-bridge-leg', (x, .35, 1.98), (.23, .28, 1.02), WHITE, root, .02)
+    cube('probe-carriage', (0, .18, 2.65), (.44, .36, .28), STEEL, root, .015)
+    cylinder('probe-quill', (0, -.14, 2.35), .085, .52, CHROME, root, 28)
+    cylinder('probe-stylus', (0, -.14, 1.96), .019, .27, CHROME, root, 20)
+    cylinder('probe-tip', (0, -.14, 1.80), .055, .08, ruby, root, 24)
+
+    door = empty('SlidingDoor', root)
+    door['stroke'] = 1.62
+    cube('door-top', (0, -1.70, 2.59), (1.70, .09, .13), YELLOW, door, .014)
+    cube('door-bottom', (0, -1.70, 1.06), (1.70, .09, .13), YELLOW, door, .014)
+    for x in (-.80, .80):
+        cube('door-side', (x, -1.70, 1.82), (.11, .09, 1.55), YELLOW, door, .014)
+    cube('door-glass', (0, -1.70, 1.82), (1.49, .032, 1.38), GLASS, door, .01)
+    cube('door-handle', (.77, -1.81, 1.65), (.06, .08, .33), BLACK, door, .01)
+    for level in (1.01, 2.64):
+        cube('door-track', (-.20, -1.61, level), (3.40, .10, .07), STEEL, root, .01)
+    for x in (-1.43, 1.43):
+        cube('front-frame', (x, -1.57, 1.80), (.73, .10, 1.92), WHITE_TOP, root, .02)
+    panel_controls(root, 1.51, -1.71, 1.71)
+    text_mesh('machine-id', 'CMM-01', (-1.11, -1.78, 2.80), .16, BLACK, root)
+    text_mesh('machine-type', '3D METROLOGY', (-.20, -1.78, 2.80), .12, BLACK, root)
+    status_light(root, 1.50, -.92, 3.00)
+    return root
+
+
 def arm_cover(kind, parent, start, end, width, height):
     """Fit a ComfyUI-generated rigid casting to this link's local frame."""
     before = set(bpy.data.objects)
@@ -472,7 +512,7 @@ def make_full_scene():
     layout = load_layout()
     exterior = load_cnc_exterior()
     coords = {d['id']: d['machinePosition'] for d in layout['docks'] if 'machinePosition' in d}
-    builders={'GRIND':make_grind,'WIRE':make_wire,'EDM':make_edm}
+    builders={'GRIND':make_grind,'WIRE':make_wire,'EDM':make_edm,'CMM':make_cmm}
     for ident,(x,z) in coords.items():
         kind=ident.split('-')[0]
         if kind == 'CNC':
@@ -518,7 +558,7 @@ def make_full_scene():
 
 if __name__=='__main__':
     subprocess.run(['node', 'tools/export_track_layout.mjs'], cwd=ROOT, check=True)
-    for name,builder in [('cnc',make_cnc),('grind',make_grind),('wire',make_wire),('edm',make_edm),('robot',make_robot)]:
+    for name,builder in [('cnc',make_cnc),('grind',make_grind),('wire',make_wire),('edm',make_edm),('cmm',make_cmm),('robot',make_robot)]:
         export_model(name,builder)
     export_model('track', lambda: make_track_network(load_layout()))
     make_full_scene()

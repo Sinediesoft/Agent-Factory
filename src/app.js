@@ -32,6 +32,7 @@ const format = tick => {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 };
 $('completion-time').textContent = `${sim.stats.completedAtMinutes.toFixed(1)} 分鐘`;
+$('net-process-time').textContent = `${sim.stats.netProcessMinutes} 分鐘`;
 $('time-end').textContent = format(sim.durationTicks);
 $('seek').max = String(sim.durationTicks);
 $('route-list').innerHTML = DEMO.recipe.route.map((s, i) => `<li data-n="${i + 1}"><b>${s.id === 'ROUGH' ? 'CNC-L01 / R01' : s.machines[0]}</b>${s.labels.join(' → ')} · ${s.seconds.reduce((a,b)=>a+b,0)/60} 分鐘</li>`).join('');
@@ -141,7 +142,7 @@ function applyMonitorCutaway(){
   }
   for(const [id,obj] of Object.entries(machineMeshes)){
     if(obj.group){
-      const interiorNames=/^(cross-slide|table-t-slot|work-fixture|spindle-housing|spindle-chuck|cutting-tool|grinder-bed|grinder-column|magnetic-chuck|chuck-line.*|wheel-spindle|grinding-wheel|wheel-center|wheel-index|wheel-guard|coolant-nozzle|coolant-line|dielectric-tank|dielectric-basin|tank-rim|wire-guide-.*|wire-bed-.*|lower-wire-head|upper-wire-head|wire-filament|fixture-block|ram-sleeve.*|z-ram|electrode-holder|electrode|machining-.*)$/;
+      const interiorNames=/^(cross-slide|table-t-slot|work-fixture|spindle-housing|spindle-chuck|cutting-tool|grinder-bed|grinder-column|magnetic-chuck|chuck-line.*|wheel-spindle|grinding-wheel|wheel-center|wheel-index|wheel-guard|coolant-nozzle|coolant-line|dielectric-tank|dielectric-basin|tank-rim|wire-guide-.*|wire-bed-.*|lower-wire-head|upper-wire-head|wire-filament|fixture-block|ram-sleeve.*|z-ram|electrode-holder|electrode|cmm-(?!depth-enclosure).*|probe-.*|machining-.*)$/;
       obj.group.traverse(part=>{
         if(part.isMesh)part.visible=!(inside&&id===selectedId)||interiorNames.test(part.name);
       });
@@ -409,7 +410,7 @@ $('cnc-shell-demo').addEventListener('click', () => {
   controls.update();
   setFocusButton($('cnc-shell-demo'));
   document.querySelector('.scene-overlay span:first-child').textContent =
-    [shellStationId, {CNC:'ROBODRILL',GRIND:'平面研磨 · FANUC 控制器風格 · ComfyUI 外殼',WIRE:'ROBOCUT · ComfyUI 外殼',EDM:'成形放電 · ComfyUI 外殼'}[station.type], loading.piece].join(' · ');
+    [shellStationId, {CNC:'ROBODRILL',GRIND:'平面研磨 · FANUC 控制器風格 · ComfyUI 外殼',WIRE:'ROBOCUT · ComfyUI 外殼',EDM:'成形放電 · ComfyUI 外殼',CMM:'三次元品檢 · ComfyUI 外殼'}[station.type], loading.piece].join(' · ');
   const arrival = sim.spans.find(span => span.taskId === loading.taskId && span.frontTo === shellStationId);
   playback.seek(arrival ? Math.max(arrival.start, loading.start - 50) : loading.start);
   const cutting = processSpans[shellStationId].filter(span => span.piece === loading.piece);
@@ -421,15 +422,16 @@ $('cnc-shell-demo').addEventListener('click', () => {
   playback.play();
   updatePanel(stateAt(sim, playback.tick));
 });
-const modelFiles={CNC:'cnc',GRIND:'grind',WIRE:'wire',EDM:'edm'};
+const modelFiles={CNC:'cnc',GRIND:'grind',WIRE:'wire',EDM:'edm',CMM:'cmm'};
 const movingParts={
   CNC:['spindle-housing','spindle-chuck','cutting-tool'],
   GRIND:['grinding-wheel','wheel-center','wheel-spindle','wheel-guard','coolant-nozzle'],
   WIRE:['wire-guide-slide','upper-wire-head','wire-filament','lower-wire-head'],
   EDM:['z-ram','electrode-holder','electrode'],
+  CMM:['probe-carriage','probe-quill','probe-stylus','probe-tip'],
 };
-const machiningContacts={CNC:[0,1.32,.87],GRIND:[-.245,1.82,.59],WIRE:[-.30,1.44,-.20],EDM:[0,2.08,.7]};
-const machiningColors={CNC:0xd97423,GRIND:0xf09524,WIRE:0x138fb2,EDM:0x7447c4};
+const machiningContacts={CNC:[0,1.32,.87],GRIND:[-.245,1.82,.59],WIRE:[-.30,1.44,-.20],EDM:[0,2.08,.7],CMM:[0,1.80,.14]};
+const machiningColors={CNC:0xd97423,GRIND:0xf09524,WIRE:0x138fb2,EDM:0x7447c4,CMM:0x22a6a8};
 const spinAxis=new THREE.Vector3(0,1,0),spinQuaternion=new THREE.Quaternion(),motionOffset=new THREE.Vector3();
 function attachMachiningAnimation(group,type){
   const parts=movingParts[type].map(name=>group.getObjectByName(name)).filter(Boolean)
@@ -441,7 +443,7 @@ function attachMachiningAnimation(group,type){
   const ring=new THREE.Mesh(new THREE.TorusGeometry(.14,.014,7,32),
     new THREE.MeshBasicMaterial({color:machiningColors[type],transparent:true,opacity:.72,depthWrite:false}));
   ring.name='machining-contact-ring';ring.rotation.x=Math.PI/2;effect.add(ring);
-  const sparks=Array.from({length:8},(_,i)=>{
+  const sparks=Array.from({length:type==='CMM'?0:8},(_,i)=>{
     const mesh=new THREE.Mesh(new THREE.OctahedronGeometry(.035+(i%3)*.009),
       new THREE.MeshBasicMaterial({color:machiningColors[type],transparent:true,opacity:.8,depthWrite:false}));
     mesh.name=`machining-spark-${i}`;effect.add(mesh);return mesh;
@@ -634,9 +636,11 @@ function updateScene(state){
       const grind = DEMO.stations[id].type==='GRIND';
       const wire = DEMO.stations[id].type==='WIRE';
       const edm = DEMO.stations[id].type==='EDM';
+      const cmm = DEMO.stations[id].type==='CMM';
       const inView = (monitorMode&&monitorView==='inside'&&monitorTargetSelect.value===id) ||
-        ((grind||wire||edm)&&shellTrialView&&shellStationId===id);
+        ((grind||wire||edm||cmm)&&shellTrialView&&shellStationId===id);
       animation.effect.visible=frame.active && inView && (!grind || wheelOnStock(frame.progress)) && (!edm || edmDischarging(frame.progress)) &&
+        (!cmm || (frame.progress>=.12 && frame.progress<.88)) &&
         (!wire || animation.contact.z+motionOffset.z >= frontFixture(DEMO.stations[id]).depth-.375);
       if(animation.effect.visible){
         animation.effect.position.copy(animation.contact).add(motionOffset);
@@ -660,7 +664,8 @@ function updateScene(state){
     label.classList.toggle('has-order',Boolean(orderId));
     if(orderId)label.style.setProperty('--order-color',orderColors[orderId]);
     else label.style.removeProperty('--order-color');
-    label.title=orderId?`${id} · ${orderId} · ${machineStatusText(m.status)}`:`${id} · ${machineStatusText(m.status)}`;
+    const statusText=machineStatusText(m.status,DEMO.stations[id].type);
+    label.title=orderId?`${id} · ${orderId} · ${statusText}`:`${id} · ${statusText}`;
   }
   for(const [id,p] of Object.entries(state.pieces)){
     const mesh=workpieceMeshes[id];
@@ -727,7 +732,7 @@ function renderProductionDashboard(state){
     if(machine.faulted)tile.classList.add('faulted');
     const name=document.createElement('strong');name.textContent=id;
     const detail=document.createElement('span');detail.textContent=orderId
-      ?`${orderId} · ${machineStatusText(machine.status)}`:machineStatusText(machine.status);
+      ?`${orderId} · ${machineStatusText(machine.status,DEMO.stations[id].type)}`:machineStatusText(machine.status,DEMO.stations[id].type);
     tile.title=`${id} · ${detail.textContent}`;
     tile.append(name,detail);return tile;
   });
@@ -757,11 +762,11 @@ function updatePanel(state){
   $('time-current').textContent=format(state.tick);
   $('seek').value=String(state.tick);
   $('metric-done').textContent=`${Object.values(state.pieces).filter(p=>p.done).length} / 6`;
-  $('metric-steps').textContent=`${sim.events.filter(e=>e.type==='process_completed'&&e.tick<=state.tick).length} / 36`;
+  $('metric-steps').textContent=`${sim.events.filter(e=>e.type==='process_completed'&&e.tick<=state.tick).length} / ${sim.pieces.length * DEMO.recipe.route.length}`;
   $('stock-list').innerHTML=Object.entries(state.stock).map(([id,n])=>`<div class="stock-row" data-store="${id}"><div class="stock-head"><span>${id}</span><b>${n} / 6</b></div><div class="stock-cells">${Array.from({length:6},(_,i)=>`<i class="${i<n?'filled':''}"></i>`).join('')}</div></div>`).join('');
   const nextMachineStatusMarkup=Object.entries(state.machines).map(([id,m])=>{
     const lamp=machineLampState(m.status)||'off';
-    return `<button type="button" class="machine-status-row" data-machine="${id}" title="查看 ${id} 機內監視"><b>${id}</b><span class="machine-status-value"><i class="machine-light ${lamp}"></i>${machineStatusText(m.status)}</span></button>`;
+    return `<button type="button" class="machine-status-row" data-machine="${id}" title="查看 ${id} 機內監視"><b>${id}</b><span class="machine-status-value"><i class="machine-light ${lamp}"></i>${machineStatusText(m.status,DEMO.stations[id].type)}</span></button>`;
   }).join('');
   if(nextMachineStatusMarkup!==machineStatusMarkup){
     $('machine-status-list').innerHTML=nextMachineStatusMarkup;
@@ -776,17 +781,17 @@ function updatePanel(state){
       :{active:false};
     $('machining-hud').hidden=!frame.active;
     if(frame.active){
-      const titles={CNC:'主軸切削',GRIND:'砂輪研磨',WIRE:'線割加工',EDM:'放電加工'};
+      const titles={CNC:'主軸切削',GRIND:'砂輪研磨',WIRE:'線割加工',EDM:'放電加工',CMM:'三次元尺寸品檢'};
       const progress=Math.round((state.tick-cycle.start)/(cycle.end-cycle.start)*100);
       $('machining-hud-title').textContent=titles[DEMO.stations[id].type];
       $('machining-hud-progress').textContent=`${progress}%`;
       $('machining-hud-fill').style.width=`${progress}%`;
     }
-    $('monitor-feed-status').textContent=monitorView==='inside'?machineStatusText(machine.status)
+    $('monitor-feed-status').textContent=monitorView==='inside'?machineStatusText(machine.status,DEMO.stations[id].type)
       :`${monitorAreaList.find(area=>area.id===monitorZoneSelect.value).targets.length} 個監視位置`;
   }else $('machining-hud').hidden=true;
   $('arms-list').innerHTML=Object.values(state.arms).map(a=>`<div class="arm-card"><div class="arm-head"><b>${a.id}</b><span>${a.status}</span></div><small>${a.activeLabel||'待機'}<br>${a.tool||'未裝夾爪'}${a.task?` · ${a.task}`:''}</small></div>`).join('');
-  $('event-list').innerHTML=state.recent.slice().reverse().map(e=>`<div class="event-row"><time>${format(e.tick)}</time>${eventName[e.type]||e.type} · ${e.piece||e.arm||''} ${e.machine||e.dest||e.source||e.tool||''}</div>`).join('');
+  $('event-list').innerHTML=state.recent.slice().reverse().map(e=>`<div class="event-row"><time>${format(e.tick)}</time>${e.machine==='CMM-01'&&e.type==='process_started'?'品檢開始':e.machine==='CMM-01'&&e.type==='process_completed'?'品檢完成':eventName[e.type]||e.type} · ${e.piece||e.arm||''} ${e.machine||e.dest||e.source||e.tool||''}</div>`).join('');
   for(const cursor of document.querySelectorAll('.gantt-cursor'))cursor.style.left=`${state.tick/sim.durationTicks*100}%`;
   $('run-status').textContent=playback.playing?'模擬回放中':state.tick===sim.durationTicks?'六件完成 · 排程限制通過':state.tick===0?'排程限制通過 · 等待回放':'已暫停 · 手動繼續';
   $('play-btn').textContent=playback.playing?'❚❚ 暫停':'▶ 繼續回放';

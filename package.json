@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Agent Factory synthetic seven-machine, two-arm MVP simulator and legacy 2D baseline",
+  "description": "Agent Factory synthetic eight-machine, two-arm MVP simulator and legacy 2D baseline",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",

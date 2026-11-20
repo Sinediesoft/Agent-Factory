@@ -6,14 +6,16 @@
 
 | 檔案 | 內容 |
 | --- | --- |
-| [`agent-factory-scene.blend`](../agent-factory-scene.blend) | 可編輯的七設備、雙臂與完整九環軌道場景 |
+| [`agent-factory-scene.blend`](../agent-factory-scene.blend) | 可編輯的八設備、雙臂與完整九環軌道場景 |
 | [`public/models/cnc.glb`](../public/models/cnc.glb) | CNC 的主軸、工作台、治具與備援外觀 |
 | [`public/models/cnc-l01-shell.glb`](../public/models/cnc-l01-shell.glb) | 四台 CNC 共用的 Onshape 外殼、單滑門與三色燈柱 |
 | [`public/models/grind.glb`](../public/models/grind.glb) | ComfyUI 研磨機外殼、左開滑門、磁力工作台、水平主軸砂輪與弧形護罩 |
 | [`public/models/wire.glb`](../public/models/wire.glb) | ComfyUI 固定外殼、升降槽門、電極線與上下線導頭 |
 | [`public/models/edm.glb`](../public/models/edm.glb) | ComfyUI 雙柱式外殼、升降槽門、滑枕與成形銅電極 |
+| [`public/models/cmm.glb`](../public/models/cmm.glb) | ComfyUI 固定外殼、花崗岩量測台、安全滑門、可動測頭與三色燈柱 |
 | [`public/models/robot.glb`](../public/models/robot.glb) | R1 / R2 共用的滑座、ComfyUI 上臂／前臂／腕部外殼、法蘭、粗加工與保護夾爪 |
-| [`public/models/track.glb`](../public/models/track.glb) | 主環、8 個區內環、6 組支軌、14 個停靠接入段與 6 座轉盤 |
+| [`public/models/track.glb`](../public/models/track.glb) | 主環、8 個區內環、6 組支軌、15 個停靠接入段與 6 座轉盤 |
+| [`docs/visuals/cmm-01-preview.png`](visuals/cmm-01-preview.png) | CMM-01 於場景中的近景 |
 | [`docs/visuals/agent-factory-blender-preview.png`](visuals/agent-factory-blender-preview.png) | Blender 全景預覽圖 |
 | [`docs/visuals/agent-factory-cnc-detail.png`](visuals/agent-factory-cnc-detail.png) | 四台 CNC 的近景 |
 | [`docs/visuals/agent-factory-robot-detail.png`](visuals/agent-factory-robot-detail.png) | 雙臂的近景 |
@@ -28,11 +30,13 @@
 
 GRIND-01 使用 `SlidingDoor` 與資產的 `stroke` 水平開門。水平主軸帶動砂輪旋轉，研磨頭在工件上方往復掃過五道。研磨機面板參考 FANUC CNC 研磨應用，機身尺寸依示範場景設計。[FANUC 研磨應用](https://www.fanuc.eu/eu-en/application/cnc-grinding) · [GRIND-01 生成與驗證](../tools/comfyui/grind/README.md)
 
-手臂模型提供 `Shoulder`、`Elbow`、`Wrist`、`ToolRough`、`ToolProtect` 節點。軌道模型提供 `Rotor_CNC` 等六個轉盤節點與 14 個 `Dock_*` 停靠端點，轉盤角度跟隨預約時段回放。模型載入失敗時保留簡化備援模型，畫面會顯示載入失敗訊息。
+CMM-01 使用經 ComfyUI 驗證淨空的 `cmm-depth-enclosure` 固定外殼、可滑動的 `SlidingDoor`，以及 `probe-carriage`、`probe-quill`、`probe-stylus`、`probe-tip` 四個可動節點。品檢前後測頭停在工件上方，量測時依模擬 tick 沿工件表面往復掃描。這是示範量測動作，尚未定義公差與判定。[CMM-01 生成與測試](../tools/comfyui/cmm/README.md)
 
-每台機台的三段燈柱由回放狀態控制：綠色表示機台運行中，橘色表示加工完成、等待收料，紅色表示異常；閒置時燈光熄滅。`machine_faulted` 和 `machine_recovered` 事件可驅動紅燈，異常狀態會維持到解除事件。固定六件正常示範不產生異常事件；目前燈號只呈現狀態，不包含故障停機與重新排程。
+手臂模型提供 `Shoulder`、`Elbow`、`Wrist`、`ToolRough`、`ToolProtect` 節點。軌道模型提供 `Rotor_CNC` 等六個轉盤節點與 15 個 `Dock_*` 停靠端點，轉盤角度跟隨預約時段回放。模型載入失敗時保留簡化備援模型，畫面會顯示載入失敗訊息。
 
-網頁監視模式使用同一份回放場景。機內視角會隔離選定機台、暫時隱藏外殼與周邊物件，將主軸／加工頭、工件及夾具放大置中。加工事件期間，模型加工頭、接觸點粒子及進度依模擬 tick 更新；暫停與跳轉時間軸會重現對應畫面。「加工動畫演示」會跳到所選機台的加工區段，播完同一工件的連續工序後暫停。機外視角從工作區正面上方 45° 依設備位置自動取全景。離開監視模式後恢復所有場景物件。這是合成動畫與視覺透視效果，並非實際攝影機影像。
+每台機台的三段燈柱由回放狀態控制：綠色表示機台運行中，橘色表示工序完成、等待收料，紅色表示異常；閒置時燈光熄滅。`machine_faulted` 和 `machine_recovered` 事件可驅動紅燈，異常狀態會維持到解除事件。固定六件正常示範不產生異常事件；目前燈號只呈現狀態，不包含故障停機與重新排程。
+
+網頁監視模式使用同一份回放場景。機內視角會隔離選定機台、暫時隱藏外殼與周邊物件，將加工頭或量測測頭、工件及夾具放大置中。工序期間，可動零件、接觸點效果及進度依模擬 tick 更新；暫停與跳轉時間軸會重現對應畫面。「工序動畫演示」會跳到所選機台的工序區段，播完同一工件的連續工序後暫停。機外視角從工作區正面上方 45° 依設備位置自動取全景。離開監視模式後恢復所有場景物件。這是合成動畫與視覺透視效果，並非實際攝影機影像。
 
 軌道為 0.58 m 軌距的雙鋼軌，以約 0.9 m 間距配置枕木；主環、區內環、支軌與停靠段各有不同色帶。`sharedArcRadiusM = 2` 現在直接決定八個區內環半徑，軌道參考高度為 0.2 m。這些數值都是示範工程參數。
 

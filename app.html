@@ -8,7 +8,7 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="mark"><div class="mark-icon">AF</div><div><strong>AGENT FACTORY</strong><small>SIMULATION LAB / MVP 0.1</small></div></div>
+    <div class="mark"><div class="mark-icon">AF</div><div><strong>AGENT FACTORY</strong><small>SIMULATION LAB / MVP 0.2</small></div></div>
     <div class="top-status"><span class="live-dot"></span><span id="run-status">已驗證 · 準備回放</span><span class="separator"></span><span>合成示範資料</span></div>
     <a class="outline-link" href="/index.html" target="_blank">企劃書 v1.74 ↗</a>
   </header>
@@ -16,12 +16,12 @@
     <aside class="leftpanel">
       <div class="section-kicker">01 / 生產任務</div>
       <h1>手機外殼<br><em>模具工件</em></h1>
-      <p class="intro">一張工單，六件逐件流轉。七台設備與雙臂共用路網，以 0.1 秒模擬時鐘排程。</p>
+      <p class="intro">一張工單，六件逐件流轉。八台設備與雙臂共用路網，以 0.1 秒模擬時鐘排程。</p>
       <div class="order-card">
-        <div class="card-title"><span>示範配方</span><b>v1.74</b></div>
+        <div class="card-title"><span>示範配方</span><b>v1.74 + 品檢</b></div>
         <strong>PHONE-MOLD-6</strong>
         <div class="order-row"><span>工單數量</span><b>6 件</b></div>
-        <div class="order-row"><span>淨加工工作量</span><b>282 分鐘</b></div>
+        <div class="order-row"><span>加工與品檢工作量</span><b id="net-process-time">—</b></div>
         <div class="order-row"><span>預計完工</span><b id="completion-time">—</b></div>
       </div>
       <div class="section-kicker with-gap">02 / Agent 需求入口</div>
@@ -33,13 +33,13 @@
       <ol class="route-list" id="route-list"></ol>
     </aside>
     <section class="centerpanel">
-      <div class="scene-header"><div><span class="section-kicker">LIVE SCENE / 3D</span><h2>七設備 · 雙臂 · 九環路網</h2></div><div class="legend"><span><i class="key blue"></i> 主環</span><span><i class="key yellow"></i> 支軌</span><span><i class="key violet"></i> 區內環</span></div></div>
+      <div class="scene-header"><div><span class="section-kicker">LIVE SCENE / 3D</span><h2>八設備 · 雙臂 · 九環路網</h2></div><div class="legend"><span><i class="key blue"></i> 主環</span><span><i class="key yellow"></i> 支軌</span><span><i class="key violet"></i> 區內環</span></div></div>
       <div class="scene-focus" aria-label="3D 場景視角"><button data-focus="all" class="active">全景</button><button id="monitor-mode-btn" type="button">機外監視</button><button id="monitor-inside-mode-btn" type="button">機內監視</button><select id="cnc-trial-station" aria-label="試播機台或手臂"></select><button id="cnc-shell-demo" type="button" disabled>上下料試播</button></div>
       <div class="monitor-controls" id="monitor-controls" hidden>
-        <div class="monitor-toolbar-row"><strong>模擬監視畫面</strong><span>模擬透視 · 沿用目前的 3D 回放</span><div class="monitor-view-switch" role="group" aria-label="監視視角"><button type="button" id="monitor-inside" class="active" aria-pressed="true">機內全景</button><button type="button" id="monitor-outside" aria-pressed="false">機外工作區</button></div><label for="monitor-zone">工作區</label><select id="monitor-zone" aria-label="監視工作區"></select><span class="monitor-target-control" id="monitor-target-control"><label for="monitor-target">機台</label><select id="monitor-target" aria-label="監視機台"></select></span><button class="monitor-demo-btn" id="monitor-demo-btn" type="button">▶ 加工動畫演示</button></div>
+        <div class="monitor-toolbar-row"><strong>模擬監視畫面</strong><span>模擬透視 · 沿用目前的 3D 回放</span><div class="monitor-view-switch" role="group" aria-label="監視視角"><button type="button" id="monitor-inside" class="active" aria-pressed="true">機內全景</button><button type="button" id="monitor-outside" aria-pressed="false">機外工作區</button></div><label for="monitor-zone">工作區</label><select id="monitor-zone" aria-label="監視工作區"></select><span class="monitor-target-control" id="monitor-target-control"><label for="monitor-target">機台</label><select id="monitor-target" aria-label="監視機台"></select></span><button class="monitor-demo-btn" id="monitor-demo-btn" type="button">▶ 工序動畫演示</button></div>
         <div class="monitor-size-control"><label for="monitor-size">監視畫面大小</label><input id="monitor-size" type="range" min="65" max="100" step="5" value="85" aria-label="監視畫面大小"><output id="monitor-size-value" for="monitor-size">85%</output><small>調整後會保留你的選擇</small></div>
       </div>
-      <div class="scene-wrap" id="scene-wrap"><canvas id="scene"></canvas><div class="monitor-feed-badge" id="monitor-feed-badge" hidden><span>SIM CAM</span><strong id="monitor-feed-name">—</strong><small id="monitor-feed-status">模擬監視</small></div><div class="machining-hud" id="machining-hud" hidden><div><strong id="machining-hud-title">加工動畫</strong><span id="machining-hud-progress">0%</span></div><div class="machining-hud-track"><i id="machining-hud-fill"></i></div><small>合成加工動作演示</small></div><div class="scene-overlay"><span>點擊機台物件看機內 · 拖曳旋轉 · 滾輪縮放</span><span id="scene-tick">T + 00:00</span></div><div id="labels"></div></div>
+      <div class="scene-wrap" id="scene-wrap"><canvas id="scene"></canvas><div class="monitor-feed-badge" id="monitor-feed-badge" hidden><span>SIM CAM</span><strong id="monitor-feed-name">—</strong><small id="monitor-feed-status">模擬監視</small></div><div class="machining-hud" id="machining-hud" hidden><div><strong id="machining-hud-title">工序動畫</strong><span id="machining-hud-progress">0%</span></div><div class="machining-hud-track"><i id="machining-hud-fill"></i></div><small>合成動作演示</small></div><div class="scene-overlay"><span>點擊機台物件看機內 · 拖曳旋轉 · 滾輪縮放</span><span id="scene-tick">T + 00:00</span></div><div id="labels"></div></div>
       <div class="transport">
         <div class="controls"><button id="play-btn" class="primary">▶ 開始回放</button><button id="reset-btn" class="icon-btn" title="回到起點">↺</button><label class="speed">倍率 <select id="speed-select"><option value="2">2×</option><option value="30">30×</option><option value="60">60×</option><option value="120" selected>120×</option><option value="600">600×</option><option value="1800">1800×</option></select></label></div>
         <div class="scene-scale-control" id="scene-scale-control"><label for="model-scale">模型顯示比例</label><input id="model-scale" type="range" min="70" max="200" step="5" value="110" aria-label="模型顯示比例"><output id="model-scale-value" for="model-scale">110%</output><small>只調整畫面，不改排程</small></div>
@@ -57,16 +57,16 @@
           <div id="fault-list" class="fault-list" role="status" aria-live="polite"></div>
         </section>
       </div>
-      <div class="gantt-wrap"><div class="gantt-title"><div><span class="section-kicker">SCHEDULE / GANTT</span><h3>事件驅動排程</h3></div><div class="gantt-legend">移動 <i class="pill travel"></i> 加工 <i class="pill process"></i> 等待 <i class="pill wait"></i></div></div><div id="gantt" class="gantt"></div></div>
+      <div class="gantt-wrap"><div class="gantt-title"><div><span class="section-kicker">SCHEDULE / GANTT</span><h3>事件驅動排程</h3></div><div class="gantt-legend">移動 <i class="pill travel"></i> 加工／品檢 <i class="pill process"></i> 等待 <i class="pill wait"></i></div></div><div id="gantt" class="gantt"></div></div>
     </section>
     <aside class="rightpanel">
       <div class="section-kicker">RUN / 狀態摘要</div>
       <div class="big-time" id="clock-big">00:00<small>模擬時間</small></div>
-      <div class="metrics"><div><span>已完成</span><strong id="metric-done">0 / 6</strong></div><div><span>加工紀錄</span><strong id="metric-steps">0 / 36</strong></div></div>
+      <div class="metrics"><div><span>已完成</span><strong id="metric-done">0 / 6</strong></div><div><span>工序紀錄</span><strong id="metric-steps">0 / 42</strong></div></div>
       <div class="section-kicker with-gap">庫存 / 有限槽位</div>
       <div class="stock-list" id="stock-list"></div>
       <div class="section-kicker with-gap">機台 / 狀態燈</div>
-      <div class="machine-light-legend"><span><i class="machine-light green"></i>運行中</span><span><i class="machine-light orange"></i>加工完成</span><span><i class="machine-light red"></i>異常</span></div>
+      <div class="machine-light-legend"><span><i class="machine-light green"></i>運行中</span><span><i class="machine-light orange"></i>工序完成</span><span><i class="machine-light red"></i>異常</span></div>
       <div class="machine-status-list" id="machine-status-list"></div>
       <div class="section-kicker with-gap">手臂 / 執行狀態</div>
       <div id="arms-list" class="arms-list"></div>

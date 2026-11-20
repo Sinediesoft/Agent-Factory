@@ -3,7 +3,7 @@ export const frontStation = 'CNC-L01';
 export const gripOffset = {forward: 1.155, height: -.165};
 export const fixtureHeight = 1.205;
 const fixtures = {CNC:{height:fixtureHeight, depth:.87}, GRIND:{height:1.35, depth:.78},
-  WIRE:{height:1.35, depth:.67}, EDM:{height:1.455, depth:.70}};
+  WIRE:{height:1.35, depth:.67}, EDM:{height:1.455, depth:.70}, CMM:{height:1.35, depth:.78}};
 export const frontFixture = station => fixtures[station?.type];
 // The longest blank also clears the grinder door handle in this retracted pose.
 export const retractedPose = { reach: 1.68, height: 1.70 };

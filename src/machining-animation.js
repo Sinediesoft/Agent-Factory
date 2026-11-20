@@ -41,6 +41,13 @@ function grindingOffset(progress) {
   return [x*home, -.38*down, z*home];
 }
 
+// Traverse the measured blank after a short approach, then park above the bay.
+function inspectionOffset(progress) {
+  const approach = Math.max(0, Math.min(1, progress / .12, (1 - progress) / .12));
+  const sweep = Math.max(0, Math.min(1, (progress - .12) / .76));
+  return [(.24 * Math.sin(sweep * Math.PI * 4)) * approach, -.32 * approach, (.38 + .38 * sweep) * approach];
+}
+
 // All motion is derived from the simulation tick, so pause and seek reproduce the same frame.
 export function machiningFrame(tick, span, type, status) {
   if (!span || status !== 'processing' || tick < span.start || tick >= span.end) {
@@ -55,6 +62,7 @@ export function machiningFrame(tick, span, type, status) {
     GRIND: grindingOffset(progress),
     WIRE: [0, 0, wireTravel(progress)],
     EDM: [0,ramOffset(progress,phase),0],
+    CMM: inspectionOffset(progress),
   }[type] || [0, 0, 0];
   return { active: true, progress, offset: type === 'CNC' ? offset.map(value => value * ease) : offset,
     phase, pulse: .55 + .45 * Math.sin(phase * 5) };

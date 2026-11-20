@@ -52,10 +52,10 @@ export function makeTrackLayout(config = DEMO) {
   branches.push({ id: 'SERVICE', paths: [[config.branchPoints.SERVICE,
     near(hubs.SERVICE, config.branchPoints.SERVICE, radius)]] });
   const docks = [];
-  const cncDocks = Object.values(config.stations).filter(s => s.type === 'CNC').map(s => s.dock);
+  const cncDocks = Object.values(config.stations).filter(s => s.zone === 'CNC' && frontFixture(s)).map(s => s.dock);
   for (const [id, machine] of Object.entries(config.stations)) {
     const dock = pointFor(id, config);
-    if (machine.type === 'CNC') {
+    if (machine.zone === 'CNC' && frontFixture(machine)) {
       // The carriage stops at its center. Leave rail under the front shoes beyond that point.
       docks.push({id, zone:machine.zone, machinePosition:[machine.x,machine.z], ...frontSpur(dock,radius,cncDocks)});
     } else if (frontFixture(machine)) {
@@ -94,7 +94,8 @@ export function validateTrackLayout(layout, config = DEMO) {
   const onRing = (point, zone) => Math.abs(Math.hypot(point[0] - hubs[zone][0], point[1] - hubs[zone][1]) - layout.sharedArcRadiusM) < 1e-6;
   if (layout.rings.length !== 8) errors.push('Expected 8 area rings');
   if (layout.branches.length !== 6) errors.push('Expected 6 branch groups');
-  if (layout.docks.length !== 14) errors.push('Expected 14 docking spurs');
+  const expectedDocks = Object.keys(config.stations).length + Object.keys(config.stores).length + Object.keys(config.service).length;
+  if (layout.docks.length !== expectedDocks) errors.push(`Expected ${expectedDocks} docking spurs`);
   if (layout.gaugeM <= 0 || layout.sleeperSpacingM <= 0) errors.push('Rail gauge or sleeper spacing invalid');
   if (!close(layout.main.path[0], layout.main.path.at(-1))) errors.push('Main ring is open');
   for (const ring of layout.rings) {
