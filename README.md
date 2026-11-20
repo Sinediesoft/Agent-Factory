@@ -11,14 +11,18 @@ npm install
 npm run dev
 ```
 
-開啟 `http://127.0.0.1:5173/app.html`。`http://127.0.0.1:5173/` 保留 v1.74 企劃書與舊 2D 原型。
+開啟 `http://127.0.0.1:5173/` 查看 3D 模擬。舊網址 `/app.html` 會導向首頁；v1.74 企劃書與舊 2D 原型位於 `/factory-agent-proposal.html`。
 
 ```sh
 npm test       # 新模擬核心與舊 2D 原型
-npm run build  # 產生 dist/app.html 與 dist/index.html
+npm run build  # 產生 GitHub Pages 子路徑可用的 dist/
 ```
 
-`npm run preview` 可檢查靜態建置成果。`/api/interpret` 是開發伺服器上的本機 API；純靜態預覽沒有 LLM 後端。
+`npm run preview` 可檢查靜態建置成果，網址為 `http://127.0.0.1:4173/Agent-Factory/`。`/api/interpret` 是開發伺服器上的本機 API；靜態建置會停用 LLM 輸入與按鈕。
+
+## GitHub Pages
+
+公開倉庫後，在 Settings → Pages 將 Build and deployment → Source 設為 GitHub Actions。推送至 `main` 會由 `.github/workflows/deploy.yml` 執行測試、建置並發布 `dist/`。公開網址為 <https://sinediesoft.github.io/Agent-Factory/>。GitHub Pages 只提供 3D 合成示範與回放，不執行本機 LLM API。
 
 CNC 工作區的四台機台共用以 FANUC ROBODRILL α-D21MiB5 Plus 為外觀參考的 Onshape 模型，包含單扇滑門、斜紋視窗與右側操作面板。在場景上方選擇 CNC 編號後按「上下料試播」，可觀看該台首件工件從正門上料、加工到完工下料。四台共用進區軌道，並各有對準門口的專用停靠支線。[模型與重建方式](tools/onshape/README.md) · [觀看 CNC-R01、R02、L02 完整試播](docs/visuals/cnc-area-front-cycles.mp4)
 
@@ -68,7 +72,7 @@ Blender 可編輯場景、GLB 與重建方法見 [docs/BLENDER_MODELS.md](docs/B
 
 | 路徑 | 用途 |
 | --- | --- |
-| `app.html`, `src/app.js`, `src/style.css` | 新 3D MVP 入口與畫面 |
+| `index.html`, `src/app.js`, `src/style.css` | 3D MVP 首頁與畫面；`app.html` 保留舊網址導向 |
 | `src/config.js` | 合成設定與版本化配方 |
 | `src/track-layout.js`, `tools/track-layout.json`, `tools/build_track.py` | 軌道路網來源與 Blender 建模 |
 | `src/sim.js` | 事件排程、移動 / 動作 / 資源預約、驗證 |
@@ -80,6 +84,6 @@ Blender 可編輯場景、GLB 與重建方法見 [docs/BLENDER_MODELS.md](docs/B
 | `src/execution-ledger.js` | 執行確認與占用保留契約 |
 | `src/agent-server.js` | 本機可選 LLM API 與輸出檢查 |
 | `tests/sim.test.js` | 新模擬核心測試 |
-| `index.html`, `test-demo.cjs` | v1.74 企劃書與舊 2D 原型 |
+| `factory-agent-proposal.html`, `test-demo.cjs` | v1.74 企劃書與舊 2D 原型 |
 
 技術選型參考 [Three.js 官方安裝說明](https://threejs.org/manual/pages/installation.html)、[Vite 官方指南](https://vite.dev/guide/) 與 [OpenAI API 官方文件](https://platform.openai.com/docs/api-reference/responses)。

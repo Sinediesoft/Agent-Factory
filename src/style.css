@@ -88,6 +88,7 @@ textarea{background:#fff;border-color:#b9cad7;color:#21384b}
 .monitor-view-switch button+button{border-left:1px solid #9fc8de}
 .monitor-view-switch button.active{background:#d6effb;color:#115a80;font-weight:700}
 .monitor-view-switch button:disabled{color:#9cafbc;background:#f0f4f6;cursor:not-allowed}
+.leftpanel textarea:disabled,.leftpanel button:disabled{opacity:.55;cursor:not-allowed}
 .monitor-target-control{display:inline-flex;align-items:center;gap:9px;margin:0!important;width:auto!important}
 .monitor-target-control[hidden]{display:none}
 .monitor-demo-btn{padding:6px 10px;border:1px solid #2586ae;background:#258cb9;color:#fff;font-size:10px;font-weight:700;white-space:nowrap}
