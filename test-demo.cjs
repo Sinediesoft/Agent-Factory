@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const html=fs.readFileSync(path.join(__dirname, 'index.html'),'utf8');
+const html=fs.readFileSync(path.join(__dirname, 'factory-agent-proposal.html'),'utf8');
 const code=html.match(/<script>([\s\S]*?)<\/script>/)[1];
 const nodes={};
 for(const match of html.matchAll(/\bid="([^"]+)"/g)) nodes[match[1]]={value:'',textContent:'',innerHTML:'',disabled:false,attrs:{},handlers:{},setAttribute(k,v){this.attrs[k]=v;},addEventListener(k,v){this.handlers[k]=v;},focus(){}};

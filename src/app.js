@@ -15,6 +15,7 @@ import { frontStation, poseFrontRobot, poseMachineDoor, gripOffset, frontFixture
 import {armPose,toolSeat,storeSlot,robotTrial} from './robot-motion.js';
 
 const $ = id => document.getElementById(id);
+const modelUrl = name => `${import.meta.env.BASE_URL}models/${name}.glb`;
 const sim = buildSimulation();
 const errors = validateSimulation(sim);
 if (errors.length) throw new Error(errors.join('; '));
@@ -455,7 +456,7 @@ const turntableRotors={};
 const turntableSpans=Object.fromEntries(DEMO.branchOrder.map(id=>[id,sim.spans
   .filter(span=>span.category==='turntable'&&span.resources.includes(`turntable:${id}`))
   .sort((a,b)=>a.start-b.start)]));
-Promise.all([...Object.values(modelFiles),'robot','track'].map(name=>loadModel(`/models/${name}.glb`).then(gltf=>[name,gltf.scene])))
+Promise.all([...Object.values(modelFiles),'robot','track'].map(name=>loadModel(modelUrl(name)).then(gltf=>[name,gltf.scene])))
   .then(async entries=>{
     const templates=Object.fromEntries(entries);
     const track=templates.track;
@@ -502,7 +503,7 @@ Promise.all([...Object.values(modelFiles),'robot','track'].map(name=>loadModel(`
       modelRoot.add(tool);entry.mesh=tool;
     }
     try {
-      const {scene: shell} = await loadModel('/models/cnc-l01-shell.glb');
+      const {scene: shell} = await loadModel(modelUrl('cnc-l01-shell'));
       for (const [id, station] of Object.entries(DEMO.stations)) {
         if (station.type === 'CNC') installCadShell(machineMeshes[id].group, shell, machineMeshes[id], id);
       }
@@ -800,12 +801,22 @@ $('play-btn').addEventListener('click',()=>{if(playback.playing)playback.pause()
 $('reset-btn').addEventListener('click',()=>{demoStopTick=null;armTrial=null;playback.pause();playback.seek(0);updatePanel(stateAt(sim,0));});
 $('seek').addEventListener('input',e=>{demoStopTick=null;armTrial=null;playback.pause();playback.seek(Number(e.target.value));updatePanel(stateAt(sim,playback.tick));});
 $('speed-select').addEventListener('change',e=>{if(armTrial){armTrial=null;demoStopTick=null;}trialMachiningWindow=null;playback.rate=Number(e.target.value);});
-$('interpret-btn').addEventListener('click',async()=>{
+if (import.meta.env.PROD) {
+  $('request-text').disabled = true;
+  $('interpret-btn').disabled = true;
+  $('interpret-btn').textContent = '線上版不提供 LLM 解析';
+  $('request-result').textContent = '可直接回放固定六件示範工單。';
+  document.querySelector('.leftpanel .helper').textContent = '線上版提供固定示範工單與完整 3D 回放。';
+} else {
+  $('request-text').disabled = false;
+  $('interpret-btn').disabled = false;
+  $('interpret-btn').addEventListener('click',async()=>{
   const btn=$('interpret-btn'),result=$('request-result');btn.disabled=true;result.textContent='正在呼叫本機 LLM 服務…';
   try{const response=await fetch('/api/interpret',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:$('request-text').value})});const body=await response.json();if(!response.ok)throw new Error(body.error||`HTTP ${response.status}`);result.replaceChildren();const title=document.createElement('strong');title.textContent='LLM 摘要 · 需確認後才排程';result.append(title);const detail=document.createElement('div');detail.textContent=`配方 ${body.recipeId||'未匹配'} · 數量 ${body.quantity??'未指定'} · 交期 ${body.dueMinutes??'未指定'} 分鐘 · ${body.notes||''}`;result.append(detail);}
   catch(error){result.textContent=`LLM 尚無法使用：${error.message.replace(/[。.!！]+$/,'')}。目前仍可回放固定六件示範。`;}
   finally{btn.disabled=false;}
-});
+  });
+}
 let lastPanel=-Infinity;
 function frame(now){
   requestAnimationFrame(frame);
