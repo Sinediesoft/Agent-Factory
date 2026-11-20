@@ -5,7 +5,7 @@ const cncStation = (x, label) => ({
 
 export const DEMO = Object.freeze({
   kind: 'synthetic_demo',
-  version: 'mvp-0.1',
+  version: 'mvp-0.2-cmm',
   quantumSeconds: 0.1,
   travelSpeedMps: 0.5,
   sharedArcRadiusM: 2,
@@ -35,6 +35,7 @@ export const DEMO = Object.freeze({
     'CNC-R01': cncStation(-10.5, '粗加工 B'),
     'CNC-L02': cncStation(-23, '最終精加工'),
     'CNC-R02': cncStation(-4.8, '特徵加工'),
+    'CMM-01': { zone: 'CNC', x: -28.75, z: -19, dock: [-28.59, -14.95], type: 'CMM', label: '三次元品檢' },
     'GRIND-01': { zone: 'GRIND', x: 2, z: -21, dock: [2, -17], type: 'GRIND', label: '平面研磨' },
     'WIRE-01': { zone: 'WIRE', x: 16.30, z: -15.5, dock: [16, -11.5], type: 'WIRE', label: '線割' },
     'EDM-01': { zone: 'EDM', x: 16, z: -1, dock: [16, 3], type: 'EDM', label: '放電' },
@@ -55,7 +56,7 @@ export const DEMO = Object.freeze({
     { id: 'GRIP-PROTECT-02', kind: 'PROTECT', slot: 'S-PROTECT-02', dock:'T2' },
   ],
   recipe: {
-    id: 'PHONE-MOLD-6', version: '1.74-synthetic', title: '手機外殼模具工件', quantity: 6,
+    id: 'PHONE-MOLD-6', version: '1.74-cmm-synthetic', title: '手機外殼模具工件', quantity: 6,
     route: [
       { id: 'ROUGH', machines: ['CNC-L01', 'CNC-R01'], seconds: [240, 480], labels: ['外形 / 平面', '型腔 / 大量減料'] },
       { id: 'GRIND', machines: ['GRIND-01'], seconds: [240], labels: ['平面研磨'] },
@@ -63,6 +64,7 @@ export const DEMO = Object.freeze({
       { id: 'R02', machines: ['CNC-R02'], seconds: [360], labels: ['指定特徵加工'] },
       { id: 'EDM', machines: ['EDM-01'], seconds: [600], labels: ['放電'] },
       { id: 'L02', machines: ['CNC-L02'], seconds: [420], labels: ['最終指定精加工'] },
+      { id: 'CMM', machines: ['CMM-01'], seconds: [180], labels: ['三次元尺寸品檢'] },
     ],
   },
 });

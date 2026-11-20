@@ -80,6 +80,10 @@ def surface_from_views(images, masks, session, machine):
         chamber |= ram_bore
     elif machine == 'grind':
         chamber = (abs(gx) < 1.16) & (gy > .72) & (gy < 2.73) & (gz > -.72)
+    elif machine == 'cmm':
+        # Keep the measuring table and robot transfer corridor open. The shell
+        # supplies only the fixed base, rear cabinet, and bridge side frames.
+        chamber = (abs(gx) < 1.30) & (gy > .76) & (gy < 2.76) & (gz > -.78)
     else:
         chamber = (gx > -1.59) & (gx < .91) & (gy > .58) & (gy < 2.74) & (gz > -.69)
     envelope = (abs(gx) <= 1.96) & (abs(gz) <= 1.59) & (gy >= .19) & (gy <= 3.15)
@@ -128,9 +132,13 @@ class GrindDepthShell(WireDepthShell):
     machine = 'grind'
 
 
+class CmmDepthShell(WireDepthShell):
+    machine = 'cmm'
+
+
 class ArmLinkDepthShell(WireDepthShell):
     machine = 'robot-link'
 
 
 NODE_CLASS_MAPPINGS = {'ArmLinkDepthShell': ArmLinkDepthShell, 'WireDepthShell': WireDepthShell, 'EdmDepthShell': EdmDepthShell,
-                       'GrindDepthShell': GrindDepthShell}
+                       'GrindDepthShell': GrindDepthShell, 'CmmDepthShell': CmmDepthShell}

@@ -296,7 +296,10 @@ export function buildSimulation(config = DEMO, options = {}) {
     const firstSpan = spans.filter(s => s.taskId === task.id && s.category !== 'wait').reduce((min, s) => Math.min(min, s.start), Infinity);
     addEvent(firstSpan, 'execution_started', { taskId: task.id, arm: arm.id, piece: piece.id });
     addAgenda(cursor, 'task_finish', { task, arm, piece });
-    if (dest==='FG') {
+    // Clear shared storage docks before another carriage can be booked there.
+    // The return route is reserved with the transfer, before later tasks plan
+    // an arrival at the same WIP or FG dock.
+    if (dest==='FG' || dest==='WIP') {
       const park=config.armStart[arm.id];
       const parked=scheduleRoute(arm,task,dest,park,cursor);
       addAgenda(parked,'park_finish',{arm,park});
@@ -361,7 +364,7 @@ export function buildSimulation(config = DEMO, options = {}) {
         if (task.dest === 'FG') piece.done = true;
       }
       piece.location = task.dest; piece.reserved = false;
-      arm.busy = task.dest==='FG'; arm.location = task.dest;
+      arm.busy = task.dest==='FG' || task.dest==='WIP'; arm.location = task.dest;
       addEvent(clock, 'placed', { taskId: task.id, arm: arm.id, piece: piece.id, dest: task.dest, done: piece.done });
       addEvent(clock, 'task_completed', { taskId: task.id, arm: arm.id, piece: piece.id });
     }
@@ -390,13 +393,13 @@ export function validateSimulation(result) {
   const { config, pieces, stock, events, tasks, reservations } = result;
   const quantity = result.options.quantity ?? config.recipe.quantity;
   if (pieces.length !== quantity) errors.push('Unexpected quantity');
-  if (pieces.some(p => !p.done || p.stage !== 6 || p.location !== 'FG')) errors.push('Unfinished workpieces');
+  if (pieces.some(p => !p.done || p.stage !== config.recipe.route.length || p.location !== 'FG')) errors.push('Unfinished workpieces');
   if (stock.RAW !== 0 || stock.WIP !== 0 || stock.FG !== quantity) errors.push('Incorrect final stock');
   for (const piece of pieces) {
     const sequence = events.filter(e => e.type === 'process_completed' && e.piece === piece.id).map(e => e.step);
-    if (sequence.join(',') !== 'ROUGH,GRIND,WIRE,R02,EDM,L02') errors.push(`${piece.id}: invalid route`);
+    if (sequence.join(',') !== config.recipe.route.map(step => step.id).join(',')) errors.push(`${piece.id}: invalid route`);
   }
-  if (events.filter(e => e.type === 'process_completed').length !== quantity * 6) errors.push('Incorrect process completion count');
+  if (events.filter(e => e.type === 'process_completed').length !== quantity * config.recipe.route.length) errors.push('Incorrect process completion count');
   if (events.filter(e => e.type === 'placed' && e.dest === 'FG').length !== quantity) errors.push('Incorrect FG confirmation count');
   for (const [resource, rows] of Object.entries(reservations)) {
     for (let i = 1; i < rows.length; i++) if (rows[i].start < rows[i - 1].end) errors.push(`Overlap on ${resource}`);

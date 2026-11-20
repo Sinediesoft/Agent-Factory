@@ -287,3 +287,45 @@ test('EDM-01 keeps a discharge gap, retracts the ram and unloads all six parts',
   assert.equal(edmSurfaceProgress(0),0);
   assert.equal(edmSurfaceProgress(1),1);
 });
+
+test('CMM-01 probes each finished blank without cutting it before FG transfer', async () => {
+  const sim = buildSimulation(), model = await load('cmm'), id = 'CMM-01';
+  const fixture = frontFixture(DEMO.stations[id]);
+  const bounds = name => new Box3().setFromObject(model.getObjectByName(name), true);
+  const stock = new Box3().setFromCenterAndSize(
+    new Vector3(0, fixture.height, fixture.depth), new Vector3(.50, .18, .75));
+  const tip = bounds('probe-tip');
+  const quill = bounds('probe-quill');
+  assert.ok(Math.abs(bounds('cmm-fixture').max.y - stock.min.y) < .0001);
+  assert.ok(tip.min.y - stock.max.y > .25);
+  const processes = sim.spans.filter(span => span.station === id && span.category === 'process');
+  assert.equal(processes.length, 6);
+  for (const span of processes) {
+    const before = stateAt(sim, span.start), after = stateAt(sim, span.end);
+    assert.equal(before.machines[id].status, 'processing');
+    assert.equal(before.machines[id].doorOpen, false);
+    assert.equal(after.machines[id].status, 'ready');
+    assert.equal(after.pieces[span.piece].stage, DEMO.recipe.route.length);
+    const pickup = sim.events.find(event => event.type === 'picked' && event.source === id && event.piece === span.piece);
+    const inFG = sim.events.find(event => event.type === 'placed' && event.dest === 'FG' && event.piece === span.piece);
+    assert.ok(pickup.tick > span.end && inFG.tick > pickup.tick);
+  }
+  const first = processes[0];
+  let contact = 0, minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (let tick = first.start; tick <= first.end; tick++) {
+    const frame = machiningFrame(tick, first, 'CMM', 'processing');
+    const offset = new Vector3(...frame.offset);
+    const movingTip = tip.clone().translate(offset);
+    const movingQuill = quill.clone().translate(offset);
+    assert.ok(movingTip.min.y >= stock.max.y - .0001);
+    assert.ok(movingQuill.min.y > stock.max.y);
+    if (frame.progress >= .12 && frame.progress < .88) {
+      if (Math.abs(movingTip.min.y - stock.max.y) < .001) contact++;
+      minX = Math.min(minX, movingTip.getCenter(new Vector3()).x);
+      maxX = Math.max(maxX, movingTip.getCenter(new Vector3()).x);
+      minZ = Math.min(minZ, movingTip.getCenter(new Vector3()).z);
+      maxZ = Math.max(maxZ, movingTip.getCenter(new Vector3()).z);
+    }
+  }
+  assert.ok(contact > 0 && maxX - minX > .4 && maxZ - minZ > .35);
+});

@@ -96,11 +96,15 @@ test('Blender rail layout stays connected to the simulation geometry', () => {
   assert.equal(layout.docks.length, Object.keys(DEMO.stations).length + Object.keys(DEMO.stores).length + Object.keys(DEMO.service).length);
 });
 
-test('six mold workpieces complete six ordered steps and six FG confirmations', () => {
+test('six mold workpieces complete seven ordered steps including CMM inspection and six FG confirmations', () => {
   const result = buildSimulation();
   assert.deepEqual(validateSimulation(result), []);
-  assert.equal(result.stats.processCompletions, 36);
-  assert.equal(result.stats.netProcessMinutes, 282);
+  assert.equal(result.stats.processCompletions, 42);
+  assert.equal(result.stats.netProcessMinutes, 300);
+  for (const piece of result.pieces) {
+    const steps = result.events.filter(event => event.type === 'process_completed' && event.piece === piece.id).map(event => event.step);
+    assert.deepEqual(steps, ['ROUGH', 'GRIND', 'WIRE', 'R02', 'EDM', 'L02', 'CMM']);
+  }
   assert.deepEqual(result.stock, { RAW: 0, WIP: 0, FG: 6 });
   assert.equal(result.pieces.length, 6);
   assert.equal(result.events.filter(e => e.type === 'placed' && e.dest === 'FG').length, 6);

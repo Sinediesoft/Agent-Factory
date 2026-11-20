@@ -5,10 +5,10 @@ export function machineLampState(status) {
   return null;
 }
 
-export function machineStatusText(status) {
+export function machineStatusText(status, type = '') {
   if (status === 'fault') return '異常';
   if (status === 'processing') return '運行中';
-  if (status === 'ready') return '加工完成・等待收料';
+  if (status === 'ready') return type === 'CMM' ? '品檢完成・等待收料' : '加工完成・等待收料';
   return '待機';
 }
 

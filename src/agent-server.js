@@ -14,7 +14,7 @@ export async function interpretRequest(text, { apiKey = process.env.OPENAI_API_K
       method: 'POST', signal: controller.signal,
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, store: false,
-        instructions: `你是工廠模擬需求整理器。只輸出一個 JSON 物件，不加 Markdown。欄位：recipeId（只能是 ${allowedRecipe} 或 null）、quantity（整數或 null）、dueMinutes（非負數或 null）、notes（最多 160 字）。只有明確要求手機外殼模具工件且相容既有配方時才能匹配；不能產生新工藝、G-code、機台命令或擅自修改既定六道流程。若需求不符，recipeId 為 null 並在 notes 指明缺口。`,
+        instructions: `你是工廠模擬需求整理器。只輸出一個 JSON 物件，不加 Markdown。欄位：recipeId（只能是 ${allowedRecipe} 或 null）、quantity（整數或 null）、dueMinutes（非負數或 null）、notes（最多 160 字）。只有明確要求手機外殼模具工件且相容既有含三次元品檢的七道示範配方時才能匹配；不能產生新工藝、G-code、機台命令或擅自修改既定流程。若需求不符，recipeId 為 null 並在 notes 指明缺口。`,
         input: text }),
     });
   } catch (error) {
