@@ -57,8 +57,8 @@ textarea{background:#fff;border-color:#b9cad7;color:#21384b}
 .scene-label .machine-light{width:7px;height:7px;margin-right:4px;vertical-align:middle}
 .monitor-view .scene-label[data-machine]{font-size:11px;padding:5px 7px}
 .monitor-view .scene-label .machine-light{width:10px;height:10px;margin-right:5px}
-.scene-label[data-machine]{pointer-events:auto;cursor:pointer}
-.scene-label[data-machine]:hover,.scene-label[data-machine]:focus-visible{border-color:#2b9bc3;box-shadow:0 0 0 2px #79c8e458}
+.scene-label[data-machine]{pointer-events:none}
+.scene-label.has-order{border-color:var(--order-color);box-shadow:0 0 0 1px var(--order-color),0 0 12px var(--order-color);font-weight:800}
 .machine-status-row{width:100%;border-top:0;border-right:0;border-left:0;background:transparent;text-align:left;cursor:pointer;color:inherit}
 .machine-status-row:hover,.machine-status-row:focus-visible{background:#edf7fc;outline:1px solid #b8dceb}
 .scene-scale-control{display:flex;align-items:center;gap:10px;margin-top:11px;color:#47657b;font-size:10px}
@@ -101,3 +101,38 @@ textarea{background:#fff;border-color:#b9cad7;color:#21384b}
 .machining-hud small{color:#6b8190;font-size:9px}
 @media(max-width:760px){.monitor-controls{margin:0 14px 10px}.monitor-toolbar-row span{width:100%}.monitor-toolbar-row select{flex:1;min-width:120px}.monitor-size-control input[type=range]{flex:1;width:auto}.monitor-size-control small{width:100%;margin-left:0}}
 @media(max-width:760px){.machining-hud{top:50px;right:8px;width:145px}.monitor-feed-badge{left:8px;top:8px}}
+
+.centerpanel{container-type:inline-size}
+.production-dashboard{display:grid;grid-template-columns:1fr;gap:12px;padding:16px 22px;border-bottom:1px solid #dce5ec}
+.production-orders,.fault-panel{min-width:0;border:1px solid #d4e2ea;background:#f8fbfd;padding:13px 14px}
+.fault-panel{border-color:#edc9c5;background:#fffafa}
+.dashboard-heading{display:flex;justify-content:space-between;align-items:start;gap:8px}
+.dashboard-heading h3{margin:4px 0 12px;font-size:14px;color:#213f55}
+.fault-panel .section-kicker{color:#ae4d48}
+.dashboard-count{white-space:nowrap;border-radius:10px;background:#e6f1f7;color:#34657f;padding:3px 8px;font:10px 'DM Mono',monospace}
+.fault-panel .dashboard-count{background:#fbe8e6;color:#a5403b}
+.order-list{display:grid;gap:8px}
+.order-status-card{border:1px solid #d7e4ec;border-left:5px solid var(--order-color);background:#fff;padding:10px 11px}
+.order-status-heading,.order-status-detail{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.order-status-heading strong{font:700 12px 'DM Mono',monospace;color:#233f51;overflow-wrap:anywhere}
+.order-status-heading span{font-size:10px;color:#5d7485;white-space:nowrap}
+.order-progress{height:6px;background:#e8eff3;border-radius:4px;overflow:hidden;margin:10px 0 8px}
+.order-progress i{display:block;height:100%;background:var(--order-color);transition:width .2s}
+.order-status-detail{align-items:start;color:#5d7485;font-size:10px;line-height:1.4}
+.order-status-detail span:last-child{text-align:right}
+.order-machine-map{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-top:9px}
+.order-machine-tile{min-width:0;border:1px solid #dbe5eb;background:#fff;padding:6px 7px;border-radius:3px}
+.order-machine-tile.occupied{border-color:var(--order-color);box-shadow:inset 3px 0 var(--order-color)}
+.order-machine-tile.faulted{background:#fff0ef}
+.order-machine-tile strong,.order-machine-tile span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.order-machine-tile strong{font:700 10px 'DM Mono',monospace;color:#294b63}
+.order-machine-tile span{font-size:9px;color:#687e8e;margin-top:4px}
+.fault-list{display:grid;gap:7px}
+.fault-empty{min-height:83px;display:grid;place-items:center;border:1px dashed #e8caca;background:#fff;color:#956b68;font-size:11px}
+.fault-row{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid #efc5c1;border-left:3px solid #d43e39;background:#fff;padding:9px}
+.fault-row strong{font:700 10px 'DM Mono',monospace;color:#813b37}
+.fault-row code{font:10px 'DM Mono',monospace;color:#a3332e;text-align:right;overflow-wrap:anywhere}
+@container (min-width:640px){.production-dashboard{grid-template-columns:minmax(0,1fr) 190px}}
+@container (max-width:639px){.fault-empty{min-height:45px}}
+@media(max-width:760px){.production-dashboard{padding:14px}.order-machine-map{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.shell{display:flex;flex-direction:column}.centerpanel{order:0}.leftpanel{order:1}.rightpanel{order:2}}

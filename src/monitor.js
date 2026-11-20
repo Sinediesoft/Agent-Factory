@@ -39,7 +39,7 @@ export function monitorAreaPose(areaId, modelScale = 1, config = DEMO) {
   const minZ = Math.min(...zs), maxZ = Math.max(...zs);
   const target = [(minX + maxX) / 2, areaId === 'LOGISTICS' ? .9 : 1.4, (minZ + maxZ) / 2]
     .map(value => value * modelScale);
-  // 16:9 view at 45° elevation, with room for the full equipment footprint.
+  // Face the front (+Z) of each work area at 45° elevation.
   const side = Math.max(4.5, (Math.max(maxX - minX, maxZ - minZ) + 5) * .85) * modelScale;
-  return { target, position: [target[0] + side, target[1] + Math.SQRT2 * side, target[2] + side], fov: 45 };
+  return { target, position: [target[0], target[1] + side, target[2] + side], fov: 45 };
 }

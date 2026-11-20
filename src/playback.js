@@ -9,9 +9,11 @@ export function stateAt(sim, tick) {
   const quantity = sim.options.quantity ?? config.recipe.quantity;
   const piece = Object.fromEntries(Array.from({ length: quantity }, (_, i) => {
     const id = `P${String(i + 1).padStart(2, '0')}`;
-    return [id, { id, stage: 0, location: 'RAW', carriedBy: null, done: false }];
+    return [id, { id, orderId: sim.pieces?.[i]?.orderId || config.recipe.id,
+      stage: 0, location: 'RAW', carriedBy: null, done: false }];
   }));
-  const machines = Object.fromEntries(Object.keys(config.stations).map(id => [id, { status: 'idle', faulted: false, piece: null, doorOpen: false }]));
+  const machines = Object.fromEntries(Object.keys(config.stations).map(id => [id, { status: 'idle', faulted: false,
+    faultCode: null, piece: null, doorOpen: false, doorFraction: 0 }]));
   const arms = Object.fromEntries(['R1', 'R2'].map(id => [id, { id, location: config.armStart[id], tool: null,
     position: pointFor(config.armStart[id], config), mountedTool:null, railYaw:sim.parkYaw?.[id] ?? 0, task: null, status: 'idle' }]));
   const stock = { RAW: quantity, WIP: 0, FG: 0 };
@@ -39,16 +41,14 @@ export function stateAt(sim, tick) {
       machines[event.machine].status = 'ready';
     } else if (event.type === 'machine_faulted' && machines[event.machine]) {
       machines[event.machine].faulted = true;
+      machines[event.machine].faultCode = event.code ?? event.faultCode ?? null;
     } else if (event.type === 'machine_recovered' && machines[event.machine]) {
       machines[event.machine].faulted = false;
+      machines[event.machine].faultCode = null;
     } else if (event.type === 'task_completed') { arms[event.arm].task = null; arms[event.arm].status = 'idle'; }
   }
   for (const span of sim.spans) {
     if (span.start > tick) break;
-    if (span.station && machines[span.station] && span.category === 'action') {
-      if (span.label.includes('開門') || span.label.includes('開護罩')) machines[span.station].doorOpen = true;
-      if (span.end <= tick && (span.label.includes('關門') || span.label.includes('關護罩'))) machines[span.station].doorOpen = false;
-    }
     if (!span.arm) continue;
     const arm = arms[span.arm];
     if (span.from && span.to) {
@@ -91,6 +91,7 @@ export function stateAt(sim, tick) {
         arm.frontPose = pose;
         arm.frontRailYaw ??= Math.PI/2;
         machines[span.station].doorFraction = pose.door;
+        machines[span.station].doorOpen = pose.door === 1;
         // The gripper hands off at the fixture; task confirmation follows once the carriage can leave.
         piece[span.piece].location = pose.onFixture ? span.station : null;
         piece[span.piece].carriedBy = pose.onFixture ? null : span.arm;

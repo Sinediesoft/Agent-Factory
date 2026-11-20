@@ -1,14 +1,14 @@
 export function machineLampState(status) {
   if (status === 'fault') return 'red';
-  if (status === 'processing') return 'orange';
-  if (status === 'ready') return 'green';
+  if (status === 'processing') return 'green';
+  if (status === 'ready') return 'orange';
   return null;
 }
 
 export function machineStatusText(status) {
   if (status === 'fault') return '異常';
   if (status === 'processing') return '運行中';
-  if (status === 'ready') return '程式完成・等待收料';
+  if (status === 'ready') return '加工完成・等待收料';
   return '待機';
 }
 

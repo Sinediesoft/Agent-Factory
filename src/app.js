@@ -6,10 +6,11 @@ import { makeTrackLayout, validateTrackLayout } from './track-layout.js';
 import { buildSimulation, validateSimulation } from './sim.js';
 import { stateAt, PlaybackClock } from './playback.js';
 import { machineLampState, machineStatusText, updateMachineLamp } from './machine-status.js';
+import { productionStatus } from './production-status.js';
 import { monitorAreas, monitorAreaPose, monitorInteriorPose, monitorTarget } from './monitor.js';
 import { machiningCycle, machiningFrame, wheelOnStock, edmDischarging, edmSurfaceProgress, wireSlotLength } from './machining-animation.js';
 
-import { frontStation, poseFrontRobot, gripOffset, frontFixture } from './cnc-front-transfer.js';
+import { frontStation, poseFrontRobot, poseMachineDoor, gripOffset, frontFixture } from './cnc-front-transfer.js';
 
 import {armPose,toolSeat,storeSlot,robotTrial} from './robot-motion.js';
 
@@ -18,6 +19,7 @@ const sim = buildSimulation();
 const errors = validateSimulation(sim);
 if (errors.length) throw new Error(errors.join('; '));
 const playback = new PlaybackClock(sim.durationTicks);
+const orderColors = productionStatus(sim, stateAt(sim, 0)).colors;
 const processSpans=Object.fromEntries(Object.keys(DEMO.stations).map(id=>[id,
   sim.spans.filter(span=>span.category==='process'&&span.station===id)]));
 const processSpanAt=(id,tick)=>processSpans[id]?.find(span=>span.start<=tick&&tick<span.end);
@@ -120,7 +122,7 @@ function setMonitorCamera(){
 }
 function monitorOverlayText(){
   return monitorView==='outside'
-    ?'模擬機外監視 · 點機台狀態燈看機內 · 非實際攝影機'
+    ?'模擬機外監視 · 點擊機台物件看機內 · 非實際攝影機'
     :'模擬監視畫面 · 非實際攝影機';
 }
 function applyMonitorCutaway(){
@@ -160,7 +162,7 @@ for(const button of document.querySelectorAll('.scene-focus button[data-focus]')
   camera.fov=45;camera.updateProjectionMatrix();
   monitorControls.hidden=true;$('monitor-feed-badge').hidden=true;sceneScaleControl.hidden=false;
   sceneWrap.classList.remove('monitor-view');controls.enabled=true;
-  document.querySelector('.scene-overlay span:first-child').textContent='Blender 3D · 點機台狀態燈看機內 · 拖曳旋轉 · 滾輪縮放';
+  document.querySelector('.scene-overlay span:first-child').textContent='Blender 3D · 點擊機台物件看機內 · 拖曳旋轉 · 滾輪縮放';
   const target=new THREE.Vector3(...overviewView.target).multiplyScalar(modelScale);
   const offset=new THREE.Vector3(...overviewView.position).sub(new THREE.Vector3(...overviewView.target));
   camera.position.copy(target).add(offset);controls.target.copy(target);controls.update();
@@ -267,14 +269,10 @@ for(const branch of DEMO.branchOrder) {
   turn.position.set(DEMO.branchPoints[branch][0],DEMO.railHeightM-.12,DEMO.branchPoints[branch][1]);fallbackTrack.add(turn);
 }
 const machineMeshes={};
-const lampPickTargets=[];
-const lampPickGeometry=new THREE.SphereGeometry(.49,16,12);
-const lampPickMaterial=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0,depthWrite:false,colorWrite:false});
-function addLampPickTarget(parent,id,center){
-  const pick=new THREE.Mesh(lampPickGeometry,lampPickMaterial);
-  pick.name=`LampPick_${id}`;pick.position.copy(center);pick.userData.machineId=id;
-  parent.add(pick);lampPickTargets.push(pick);
-  return pick;
+const machinePickTargets=[];
+function registerMachinePick(mesh,id){
+  mesh.userData.machinePickId=id;
+  machinePickTargets.push(mesh);
 }
 function makeFallbackLamp(x,z){
   const group=new THREE.Group();group.position.set(x,3.03,z);
@@ -293,8 +291,8 @@ for(const [id,m] of Object.entries(DEMO.stations)) {
   machineMeshes[id]={door,roof,fallback:[body,roof,door]};
   const status=makeFallbackLamp(m.x+1.35,m.z-.6);
   machineMeshes[id].lamps=status.lamps;
-  machineMeshes[id].lampPick=addLampPickTarget(status.group,id,new THREE.Vector3(0,.34,0));
   machineMeshes[id].fallback.push(status.group);
+  for(const mesh of [body,roof,door,...Object.values(status.lamps)])registerMachinePick(mesh,id);
 }
 for(const [id,s] of Object.entries(DEMO.stores)) {
   box(3.8,.6,2.4,id==='RAW'?0x4e819b:id==='FG'?0x41795f:0x796b9f,s.x,.3,s.z);
@@ -335,7 +333,7 @@ trialPicker.addEventListener('change',()=>{
 });
 trialPicker.value = shellStationId;
 
-function installCadShell(group, template, machine) {
+function installCadShell(group, template, machine, id) {
   const shell = template.clone(true);
   shell.name = 'CadShell';
   shell.traverse(part => {
@@ -355,6 +353,7 @@ function installCadShell(group, template, machine) {
     installRobodrillExterior(group, shell, machine);
   }
   group.add(shell);
+  shell.traverse(part=>{if(part.isMesh)registerMachinePick(part,id);});
 }
 
 function installRobodrillExterior(group, shell, machine) {
@@ -376,9 +375,6 @@ function installRobodrillExterior(group, shell, machine) {
   machine.slidingDoor = door;
   machine.doorStroke = panelSize.x - .120;
   machine.lamps = lenses;
-  const middle = hasStack ? lamps.orange : lenses.beacon;
-  machine.lampPick.position.copy(new THREE.Box3().setFromObject(middle).getCenter(new THREE.Vector3()));
-  if (hasStack) machine.lampPick.scale.setScalar(.5);
   const original = group.getObjectByName('MachineRoot');
   for (const part of [...original.children]) {
     if (!/^(cross-slide|table-t-slot|work-fixture|spindle-housing|spindle-chuck|cutting-tool)/.test(part.name)) {
@@ -469,18 +465,16 @@ Promise.all([...Object.values(modelFiles),'robot','track'].map(name=>loadModel(`
       const group=templates[modelFiles[m.type]].clone(true);
       group.traverse(node=>{if(node.isMesh){node.castShadow=true;node.receiveShadow=true;if(node.material)node.material=node.material.clone();}});
       group.position.set(m.x,0,m.z);modelRoot.add(group);
-      const pickIndex=lampPickTargets.indexOf(previous.lampPick);
-      if(pickIndex>=0)lampPickTargets.splice(pickIndex,1);
+      for(let index=machinePickTargets.length-1;index>=0;index--)
+        if(machinePickTargets[index].userData.machinePickId===id)machinePickTargets.splice(index,1);
       for(const old of previous.fallback)modelRoot.remove(old);
       const doorL=group.getObjectByName('Door_L'),doorR=group.getObjectByName('Door_R');
       const yellowLamp=group.getObjectByName('StatusYellow');
-      group.updateWorldMatrix(true,true);
-      const lampCenter=yellowLamp?group.worldToLocal(yellowLamp.getWorldPosition(new THREE.Vector3()))
-        :new THREE.Vector3(1.5,3.65,.7);
       const slidingDoor = group.getObjectByName('SlidingDoor');
       machineMeshes[id]={group,slidingDoor,doorStroke:slidingDoor?.userData.stroke,gate:group.getObjectByName('TankGate'),doorL,doorR,closedL:doorL?.position.x,closedR:doorR?.position.x,
         lamps:{red:group.getObjectByName('StatusRed'),orange:yellowLamp,green:group.getObjectByName('StatusGreen')},
-        lampPick:addLampPickTarget(group,id,lampCenter),machining:attachMachiningAnimation(group,m.type)};
+        machining:attachMachiningAnimation(group,m.type)};
+      group.traverse(node=>{if(node.isMesh && !node.name.startsWith('machining-'))registerMachinePick(node,id);});
     }
     applyMonitorCutaway();
     for(const id of ['R1','R2']){
@@ -508,7 +502,7 @@ Promise.all([...Object.values(modelFiles),'robot','track'].map(name=>loadModel(`
     try {
       const {scene: shell} = await loadModel('/models/cnc-l01-shell.glb');
       for (const [id, station] of Object.entries(DEMO.stations)) {
-        if (station.type === 'CNC') installCadShell(machineMeshes[id].group, shell, machineMeshes[id]);
+        if (station.type === 'CNC') installCadShell(machineMeshes[id].group, shell, machineMeshes[id], id);
       }
       applyMonitorCutaway();
       $('cnc-shell-demo').disabled = false;
@@ -517,7 +511,7 @@ Promise.all([...Object.values(modelFiles),'robot','track'].map(name=>loadModel(`
       $('cnc-shell-demo').title = '試播外殼載入失敗';
     }
     document.querySelector('.scene-overlay span:first-child').textContent=monitorMode
-      ?monitorOverlayText():'Blender 3D · 點機台狀態燈看機內 · 拖曳旋轉 · 滾輪縮放';
+      ?monitorOverlayText():'Blender 3D · 點擊機台物件看機內 · 拖曳旋轉 · 滾輪縮放';
   }).catch(error=>{console.error('Blender model load failed',error);
     document.querySelector('.scene-overlay span:first-child').textContent='3D 模型載入失敗，顯示簡化備援模型';});
 const workpieceMeshes={};
@@ -550,43 +544,38 @@ for(const id of ['R1','R2'])labelPoints[id]=[0,2,0];
 for(const id of Object.keys(labelPoints)) {const el=document.createElement('span');el.className='scene-label';
   if(DEMO.stations[id]){
     const dot=document.createElement('i');dot.className='machine-light off';el.append(dot);
-    el.dataset.machine=id;el.setAttribute('role','button');el.tabIndex=0;
-    el.setAttribute('aria-label',`查看 ${id} 機內監視`);
+    el.dataset.machine=id;
   }
   el.append(document.createTextNode(id));$('labels').append(el);labelPoints[id].el=el;}
-$('labels').addEventListener('click',event=>{
-  const label=event.target.closest('[data-machine]');
-  if(lampNavigationEnabled()&&label)openMachineInterior(label.dataset.machine);
-});
-$('labels').addEventListener('keydown',event=>{
-  if(event.key!=='Enter'&&event.key!==' ')return;
-  const label=event.target.closest('[data-machine]');
-  if(lampNavigationEnabled()&&label){event.preventDefault();openMachineInterior(label.dataset.machine);}
-});
-function lampNavigationEnabled(){return !monitorMode||monitorView==='outside';}
-const lampRaycaster=new THREE.Raycaster(),lampPointer=new THREE.Vector2();
-function lampAt(event){
-  const bounds=canvas.getBoundingClientRect();
-  lampPointer.set((event.clientX-bounds.left)/bounds.width*2-1,
-    -(event.clientY-bounds.top)/bounds.height*2+1);
-  lampRaycaster.setFromCamera(lampPointer,camera);
-  const targets=monitorMode
-    ?lampPickTargets.filter(pick=>DEMO.stations[pick.userData.machineId].zone===monitorZoneSelect.value)
-    :shellTrialView ? lampPickTargets.filter(pick=>pick.userData.machineId===shellStationId) : lampPickTargets;
-  return lampRaycaster.intersectObjects(targets,false)[0]?.object.userData.machineId;
+function machineNavigationEnabled(){return !monitorMode||monitorView==='outside';}
+const machineRaycaster=new THREE.Raycaster(),machinePointer=new THREE.Vector2();
+function visibleMachinePart(mesh){
+  let node=mesh;
+  for(;node&&node!==modelRoot;node=node.parent)if(!node.visible)return false;
+  return node===modelRoot;
 }
-let lampPointerDown=null;
+function machineAt(event){
+  const bounds=canvas.getBoundingClientRect();
+  machinePointer.set((event.clientX-bounds.left)/bounds.width*2-1,
+    -(event.clientY-bounds.top)/bounds.height*2+1);
+  machineRaycaster.setFromCamera(machinePointer,camera);
+  const targets=machinePickTargets.filter(mesh=>visibleMachinePart(mesh) &&
+    (!monitorMode||DEMO.stations[mesh.userData.machinePickId].zone===monitorZoneSelect.value) &&
+    (!shellTrialView||mesh.userData.machinePickId===shellStationId));
+  return machineRaycaster.intersectObjects(targets,false)[0]?.object.userData.machinePickId;
+}
+let machinePointerDown=null;
 canvas.addEventListener('pointerdown',event=>{
-  if(event.button===0&&lampNavigationEnabled())lampPointerDown=[event.clientX,event.clientY];
+  if(event.button===0&&machineNavigationEnabled())machinePointerDown=[event.clientX,event.clientY];
 });
 canvas.addEventListener('pointerup',event=>{
-  const start=lampPointerDown;lampPointerDown=null;
-  if(!lampNavigationEnabled()||event.button!==0||!start||Math.hypot(event.clientX-start[0],event.clientY-start[1])>5)return;
-  const id=lampAt(event);
+  const start=machinePointerDown;machinePointerDown=null;
+  if(!machineNavigationEnabled()||event.button!==0||!start||Math.hypot(event.clientX-start[0],event.clientY-start[1])>5)return;
+  const id=machineAt(event);
   if(id)openMachineInterior(id);
 });
-canvas.addEventListener('pointercancel',()=>{lampPointerDown=null;});
-canvas.addEventListener('pointermove',event=>{canvas.style.cursor=lampNavigationEnabled()&&lampAt(event)?'pointer':'';});
+canvas.addEventListener('pointercancel',()=>{machinePointerDown=null;});
+canvas.addEventListener('pointermove',event=>{canvas.style.cursor=machineNavigationEnabled()&&machineAt(event)?'pointer':'';});
 canvas.addEventListener('pointerleave',()=>{canvas.style.cursor='';});
 function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;if(canvas.width!==Math.round(w*renderer.getPixelRatio())||canvas.height!==Math.round(h*renderer.getPixelRatio())){renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}}
 const resizeObserver=new ResizeObserver(resize);resizeObserver.observe($('scene-wrap'));resize();
@@ -628,13 +617,7 @@ function updateScene(state){
     entry.mesh.visible=!(monitorMode && monitorView==='inside') && !Object.values(state.arms).some(a=>a.mountedTool===id);
   for(const [id,m] of Object.entries(state.machines)){
     const obj=machineMeshes[id];
-    if(obj.gate){
-      obj.gate.position.y=-obj.gate.userData.stroke*(m.doorFraction ?? Number(m.doorOpen));
-    }else if(obj.slidingDoor){
-      obj.slidingDoor.position.x=-obj.doorStroke*(m.doorFraction ?? Number(m.doorOpen));
-    }else if(obj.doorL){obj.doorL.position.x=THREE.MathUtils.lerp(obj.doorL.position.x,obj.closedL+(m.doorOpen?-.55:0),.15);
-      obj.doorR.position.x=THREE.MathUtils.lerp(obj.doorR.position.x,obj.closedR+(m.doorOpen ? .55 : 0),.15);}
-    else obj.door.position.y=m.doorOpen?1.8:.95;
+    poseMachineDoor(obj, m.doorFraction);
     updateMachineLamp(obj.lamps,m.status);
     if(obj.machining){
       const animation=obj.machining;
@@ -672,6 +655,12 @@ function updateScene(state){
       }
     }
     labelPoints[id].el.firstElementChild.className=`machine-light ${machineLampState(m.status)||'off'}`;
+    const orderId=m.piece&&state.pieces[m.piece]?.orderId;
+    const label=labelPoints[id].el;
+    label.classList.toggle('has-order',Boolean(orderId));
+    if(orderId)label.style.setProperty('--order-color',orderColors[orderId]);
+    else label.style.removeProperty('--order-color');
+    label.title=orderId?`${id} · ${orderId} · ${machineStatusText(m.status)}`:`${id} · ${machineStatusText(m.status)}`;
   }
   for(const [id,p] of Object.entries(state.pieces)){
     const mesh=workpieceMeshes[id];
@@ -707,11 +696,62 @@ const ganttRows=[...Object.keys(DEMO.stations),'R1','R2'];
 for(const id of ganttRows){const row=document.createElement('div');row.className='gantt-row';row.innerHTML=`<label>${id}</label><div class="gantt-track"></div>`;const track=row.querySelector('.gantt-track');const bars=id.startsWith('R')?sim.tasks.filter(t=>t.arm===id).map(t=>({start:t.accepted,end:t.finished,category:'travel',label:`${t.piece} ${t.source} → ${t.dest}`})):sim.spans.filter(s=>s.category==='process'&&s.station===id);for(const s of bars){const bar=document.createElement('i');bar.className=`gantt-bar ${s.category}`;bar.style.left=`${s.start/sim.durationTicks*100}%`;bar.style.width=`${Math.max(.3,(s.end-s.start)/sim.durationTicks*100)}%`;bar.title=`${s.label} · ${format(s.start)}–${format(s.end)}`;track.append(bar);}const cursor=document.createElement('i');cursor.className='gantt-cursor';track.append(cursor);$('gantt').append(row);}
 const eventName={accepted:'接單',execution_started:'放行執行',tool_changed:'工具確認',picked:'取件完成',placed:'放件確認',task_completed:'任務完成',process_started:'加工開始',process_completed:'加工完成',machine_faulted:'機台異常',machine_recovered:'異常解除'};
 let machineStatusMarkup='';
+let dashboardSignature='';
+function renderProductionDashboard(state){
+  const {orders,machineOrders,faults}=productionStatus(sim,state);
+  const signature=JSON.stringify({orders,machineOrders,faults,
+    machineStates:Object.values(state.machines).map(machine=>machine.status)});
+  if(signature===dashboardSignature)return;
+  dashboardSignature=signature;
+  $('order-count').textContent=`${orders.length} 筆`;
+  const orderCards=orders.map(order=>{
+    const card=document.createElement('article');card.className='order-status-card';
+    card.style.setProperty('--order-color',order.color);
+    const heading=document.createElement('div');heading.className='order-status-heading';
+    const name=document.createElement('strong');name.textContent=order.id;
+    const status=document.createElement('span');status.textContent=order.status;
+    heading.append(name,status);
+    const progress=document.createElement('div');progress.className='order-progress';
+    const fill=document.createElement('i');fill.style.width=`${order.done/order.total*100}%`;progress.append(fill);
+    const detail=document.createElement('div');detail.className='order-status-detail';
+    const quantity=document.createElement('span');quantity.textContent=`完工 ${order.done} / ${order.total} 件`;
+    const machines=document.createElement('span');machines.textContent=order.machines.length
+      ?`機台 ${order.machines.join('、')}`:'目前沒有占用機台';
+    detail.append(quantity,machines);card.append(heading,progress,detail);return card;
+  });
+  $('order-list').replaceChildren(...orderCards);
+  const tiles=Object.entries(state.machines).map(([id,machine])=>{
+    const tile=document.createElement('div');tile.className='order-machine-tile';
+    const orderId=machineOrders[id];
+    if(orderId){tile.classList.add('occupied');tile.style.setProperty('--order-color',orderColors[orderId]);}
+    if(machine.faulted)tile.classList.add('faulted');
+    const name=document.createElement('strong');name.textContent=id;
+    const detail=document.createElement('span');detail.textContent=orderId
+      ?`${orderId} · ${machineStatusText(machine.status)}`:machineStatusText(machine.status);
+    tile.title=`${id} · ${detail.textContent}`;
+    tile.append(name,detail);return tile;
+  });
+  $('order-machine-map').replaceChildren(...tiles);
+  $('fault-count').textContent=`${faults.length} 台`;
+  const faultRows=faults.map(fault=>{
+    const row=document.createElement('div');row.className='fault-row';
+    const id=document.createElement('strong');id.textContent=fault.id;
+    const code=document.createElement('code');code.textContent=fault.code == null || fault.code === ''
+      ?'未提供故障碼':String(fault.code);
+    row.append(id,code);return row;
+  });
+  if(!faultRows.length){
+    const empty=document.createElement('div');empty.className='fault-empty';
+    empty.textContent='目前沒有故障碼';faultRows.push(empty);
+  }
+  $('fault-list').replaceChildren(...faultRows);
+}
 $('machine-status-list').addEventListener('click',event=>{
   const row=event.target.closest('[data-machine]');
   if(row)openMachineInterior(row.dataset.machine);
 });
 function updatePanel(state){
+  renderProductionDashboard(state);
   $('clock-big').firstChild.textContent=format(state.tick);
   $('scene-tick').textContent=`T + ${format(state.tick)}`;
   $('time-current').textContent=format(state.tick);

@@ -78,7 +78,10 @@ test('interior monitor centers each machining bay; exterior monitor frames each 
     const points = area.targets.map(id => DEMO.stations[id] || DEMO.stores[id] || DEMO.service[id]);
     assert.equal(pose.target[0], (Math.min(...points.map(p => p.x)) + Math.max(...points.map(p => p.x))) / 2 * 1.1);
     assert.equal(pose.target[2], (Math.min(...points.map(p => p.z)) + Math.max(...points.map(p => p.z))) / 2 * 1.1);
-    assert.ok(pose.position[0] > pose.target[0] && pose.position[2] > pose.target[2]);
+    assert.equal(pose.position[0], pose.target[0]);
+    assert.ok(pose.position[2] > pose.target[2]);
+    assert.ok(Math.abs(Math.atan2(pose.position[1] - pose.target[1],
+      pose.position[2] - pose.target[2]) - Math.PI / 4) < 1e-10);
   }
   assert.throws(() => monitorInteriorPose('RAW', 1, DEMO), /No machine interior/);
 });
@@ -162,13 +165,13 @@ test('playback pause remains paused after seek and state matches final stock', (
   assert.equal(clock.playing, false);
 });
 
-test('machine lamps show orange while running, green until pickup, and red on a fault', () => {
+test('machine lamps show green while running, orange until pickup, and red on a fault', () => {
   const result = buildSimulation();
   const started = result.events.find(event => event.type === 'process_started');
   const completed = result.events.find(event => event.type === 'process_completed' && event.machine === started.machine);
-  assert.equal(machineLampState(stateAt(result, started.tick).machines[started.machine].status), 'orange');
-  assert.equal(machineLampState(stateAt(result, completed.tick).machines[completed.machine].status), 'green');
-  assert.equal(machineStatusText('ready'), '程式完成・等待收料');
+  assert.equal(machineLampState(stateAt(result, started.tick).machines[started.machine].status), 'green');
+  assert.equal(machineLampState(stateAt(result, completed.tick).machines[completed.machine].status), 'orange');
+  assert.equal(machineStatusText('ready'), '加工完成・等待收料');
   const faultEvents = [...result.events, { tick: 1, type: 'machine_faulted', machine: 'EDM-01' },
     { tick: 2, type: 'machine_recovered', machine: 'EDM-01' }].sort((a, b) => a.tick - b.tick);
   const faultRun = { ...result, events: faultEvents };
@@ -179,7 +182,7 @@ test('machine lamps show orange while running, green until pickup, and red on a 
     { tick: completed.tick + 1, type: 'machine_recovered', machine: started.machine }]
     .sort((a, b) => a.tick - b.tick) };
   assert.equal(machineLampState(stateAt(persistentFault, completed.tick).machines[started.machine].status), 'red');
-  assert.equal(machineLampState(stateAt(persistentFault, completed.tick + 1).machines[started.machine].status), 'green');
+  assert.equal(machineLampState(stateAt(persistentFault, completed.tick + 1).machines[started.machine].status), 'orange');
   assert.equal(machineLampState('idle'), null);
 });
 

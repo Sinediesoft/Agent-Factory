@@ -4,7 +4,7 @@ import test from 'node:test';
 import { Box3, Raycaster, Triangle, Vector3 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DEMO } from '../src/config.js';
-import { poseFrontRobot, gripOffset, frontFixture } from '../src/cnc-front-transfer.js';
+import { poseFrontRobot, poseMachineDoor, gripOffset, frontFixture } from '../src/cnc-front-transfer.js';
 import {armPose} from '../src/robot-motion.js';
 import { buildSimulation } from '../src/sim.js';
 import { stateAt } from '../src/playback.js';
@@ -43,6 +43,10 @@ for (const [frontStation, station] of frontStations) test(frontStation+' clears 
   assert.ok(door && (cncShell || shell.getObjectByName(modelName+'-depth-enclosure')));
   if (tankGate) assert.equal(door.userData.stroke,.94);
   if (station.type === 'GRIND') assert.equal(door.userData.stroke,1.52);
+  const doorFront = new Box3().setFromObject(door,true).max.z;
+  const stroke = cncShell ? 1.004 : door.userData.stroke;
+  const axis = tankGate ? 'y' : 'x';
+  const machine = tankGate ? {gate: door} : {slidingDoor: door, doorStroke: stroke};
   const solids=shell.getObjectsByProperty('isMesh',true).map(m=>collider(m,m.parent===door));
   for (const m of cnc.getObjectsByProperty('isMesh',true)) {
     if (cncShell && /^(work-fixture|cross-slide|table-t-slot|spindle-|cutting-tool)/.test(m.name)) solids.push(collider(m,false));
@@ -62,15 +66,52 @@ for (const [frontStation, station] of frontStations) test(frontStation+' clears 
 
   const sim=buildSimulation();
   const transfers=sim.spans.filter(p=>p.station===frontStation && p.category==='action');
+  const loads = sim.tasks.filter(task => task.dest === frontStation);
+  assert.ok(loads.length > 0);
+  assert.deepEqual(new Set(transfers.filter(s => s.mode === 'place').map(s => s.taskId)),
+    new Set(loads.map(task => task.id)));
   for (const taskId of new Set(transfers.map(p=>p.taskId))) {
     const actions=transfers.filter(s=>s.taskId===taskId);
     const {piece:pieceId,mode,start}=actions[0], end=actions.at(-1).end;
     let nearFixture=false, crossedDoor=false;
+    const entry = actions.find(span => span.action === '手臂伸入');
+    const exit = actions.find(span => span.action === '手臂退出');
+    const opening = actions.find(span => ['開門','開護罩'].includes(span.action));
+    const closing = actions.find(span => ['關門','關護罩'].includes(span.action));
+    assert.ok(opening.end <= entry.start && entry.end <= exit.start && exit.end <= closing.start);
+    if (mode === 'place') {
+      const release = actions.find(span => span.action === '夾爪張開');
+      assert.ok(entry.end <= release.start && release.end <= exit.start);
+      assert.equal(stateAt(sim, release.start).pieces[pieceId].location, frontStation);
+      const process = sim.spans.find(s => s.category === 'process' && s.station === frontStation &&
+        s.piece === pieceId && s.end > start);
+      const started = sim.events.find(e => e.type === 'process_started' && e.machine === frontStation &&
+        e.piece === pieceId && e.tick >= start);
+      assert.ok(process && started, `No machining cycle after loading ${pieceId} at ${frontStation}`);
+      assert.ok(process.start >= closing.end);
+      assert.equal(started.tick, process.start);
+      const atStart = stateAt(sim, started.tick);
+      assert.equal(atStart.machines[frontStation].doorFraction, 0);
+      assert.equal(atStart.machines[frontStation].status, 'processing');
+      assert.equal(atStart.pieces[pieceId].location, frontStation);
+    }
+    let previousTravel = 0;
     for (let tick=start;tick<end;tick++) {
       const state=stateAt(sim,tick), arm=state.arms[actions[0].arm], piece=state.pieces[pieceId];
       assert.notEqual(arm.frontRailYaw,null);
       const pose=armPose(arm,piece.carriedBy===arm.id);
-      const open=state.machines[frontStation].doorFraction ?? 0;
+      const {doorFraction: open, doorOpen} = state.machines[frontStation];
+      poseMachineDoor(machine, open);
+      const travel = Math.abs(door.position[axis]);
+      if (tick <= opening.start || tick >= closing.end) assert.equal(travel, 0);
+      if (tick > opening.start && tick < opening.end) assert.ok(travel > previousTravel);
+      if (tick >= opening.end && tick <= closing.start) assert.equal(travel, stroke);
+      if (tick > closing.start && tick < closing.end) assert.ok(travel < previousTravel);
+      assert.equal(doorOpen, travel === stroke);
+      previousTravel = travel;
+      if (mode === 'place' && tick < closing.end) {
+        assert.notEqual(state.machines[frontStation].status, 'processing');
+      }
       group.position.set(arm.position[0]-station.x,0,arm.position[1]-station.z);
       poseFrontRobot(robot,arm.railYaw,pose);
       group.updateMatrixWorld(true);
@@ -86,6 +127,20 @@ for (const [frontStation, station] of frontStations) test(frontStation+' clears 
       const bounds=meshes.filter(m=>!m.name.startsWith(inactive)).map(m=>[m.name,new Box3().setFromObject(m,true)]);
       const partCenter=piece.carriedBy ? tcp : new Vector3(endX-station.x,fixtureHeight,depth);
       const partBox=new Box3().setFromCenterAndSize(partCenter,new Vector3(.50,.18,.75));
+      if (tick < entry.start || tick >= exit.end) {
+        // Compare against the outermost door surface, including protruding handles.
+        for (const [name,body] of bounds) {
+          assert.ok(body.min.z > doorFront, `${name} still inside ${frontStation} at tick ${tick}`);
+        }
+        const carryingOutside = mode === 'place' ? tick < entry.start : tick >= exit.end;
+        if (carryingOutside) {
+          assert.equal(piece.carriedBy, arm.id);
+          assert.ok(partBox.min.z - doorFront >= .0999, `Held ${pieceId} too close to ${frontStation} at tick ${tick}`);
+        } else {
+          assert.equal(piece.carriedBy, null);
+          assert.equal(piece.location, frontStation);
+        }
+      }
       for (const [name,body] of bounds) {
         assert.ok(!body.intersectsBox(partBox.clone().expandByScalar(-.00005)),`${mode} tick ${tick}: ${name} penetrates ${pieceId}`);
       }
@@ -95,8 +150,7 @@ for (const [frontStation, station] of frontStations) test(frontStation+' clears 
           // Conservatively test the moving part's entire AABB against the actual CAD triangles.
           const check=box.clone().expandByScalar(-.00005); // allow contact with the fixture at rest
           if (solid.sliding) {
-            const axis=tankGate?'y':'x', stroke=cncShell?1.004:door.userData.stroke;
-            check.min[axis]+=open*stroke; check.max[axis]+=open*stroke;
+            check.min[axis]-=door.position[axis]; check.max[axis]-=door.position[axis];
           }
           if (!check.intersectsBox(solid.bounds)) continue;
           assert.ok(!solid.triangles.some(t=>check.intersectsTriangle(t)),`${mode} tick ${tick}: ${name} touches ${solid.name}`);

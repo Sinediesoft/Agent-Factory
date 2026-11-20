@@ -1,5 +1,5 @@
 // Reach and height refer to the gripper center. Three.js uses +X forward and +Y up.
-import { gripOffset } from './cnc-front-transfer.js';
+import { gripOffset, retractedPose } from './cnc-front-transfer.js';
 
 function smooth(value) {
   const t = Math.max(0, Math.min(1, value));
@@ -7,7 +7,7 @@ function smooth(value) {
 }
 
 const mix = (from, to, fraction) => from + (to - from) * fraction;
-const carryPose = { reach: 1.78, height: 1.70, jaw: 0 };
+const carryPose = { ...retractedPose, jaw: 0 };
 const dockYaw = dock => dock === 'T1' ? Math.PI / 2 : -Math.PI / 2;
 
 export function toolSeat(config, dock, kind) {

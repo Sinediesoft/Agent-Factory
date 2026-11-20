@@ -67,7 +67,7 @@ test('only the lens for the current machine state emits light, including after a
   const lamps = {red: scene.getObjectByName('StackRed'), orange: scene.getObjectByName('StackOrange'),
                  green: scene.getObjectByName('StackGreen')};
   for (const [status, expected] of [
-    ['processing', 'orange'], ['fault', 'red'], ['ready', 'green'], ['idle', null],
+    ['processing', 'green'], ['fault', 'red'], ['ready', 'orange'], ['idle', null],
   ]) {
     updateMachineLamp(lamps, status);
     for (const [name, mesh] of Object.entries(lamps)) {

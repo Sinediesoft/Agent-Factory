@@ -5,7 +5,9 @@ export const fixtureHeight = 1.205;
 const fixtures = {CNC:{height:fixtureHeight, depth:.87}, GRIND:{height:1.35, depth:.78},
   WIRE:{height:1.35, depth:.67}, EDM:{height:1.455, depth:.70}};
 export const frontFixture = station => fixtures[station?.type];
-const homeReach = 1.78, homeHeight = 1.70;
+// The longest blank also clears the grinder door handle in this retracted pose.
+export const retractedPose = { reach: 1.68, height: 1.70 };
+const {reach: homeReach, height: homeHeight} = retractedPose;
 const lerp = (a,b,f) => a + (b-a)*f;
 const smooth = f => f*f*(3-2*f);
 
@@ -50,6 +52,20 @@ export function frontTransferPose(station, action, mode, fraction) {
       door = action === '原路倒退退出' ? 0 : 1-f; onFixture = mode === 'place'; jaw = onFixture ? 1 : 0; break;
   }
   return {reach,height,jaw,door,onFixture};
+}
+
+// Use the same simulation tick as the arm, including when seeking during a transfer.
+export function poseMachineDoor(machine, opening) {
+  if (machine.gate) {
+    machine.gate.position.y = -machine.gate.userData.stroke * opening;
+  } else if (machine.slidingDoor) {
+    machine.slidingDoor.position.x = -machine.doorStroke * opening;
+  } else if (machine.doorL) {
+    machine.doorL.position.x = machine.closedL - .55 * opening;
+    machine.doorR.position.x = machine.closedR + .55 * opening;
+  } else {
+    machine.door.position.y = lerp(.95, 1.8, opening);
+  }
 }
 
 const railSegments = new WeakMap();
